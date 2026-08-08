@@ -1,0 +1,27 @@
+# Happy-path scenario: every command succeeds, all checksums match.
+# With no rules at all the built-in defaults already produce a clean run; this
+# file mainly documents the schema and pins the username -> profile mapping.
+
+defaults:
+  shell_exit: 0
+
+# username -> profile. SBC/DPA interactive node = "sbc", repository = "repo".
+users:
+  a1tuj88u: sbc
+  installer: repo
+  admin: repo
+
+# Optional: override a profile's prompt/banner/login prompts (defaults are the
+# real SBC `<host:user>/path:\n# ` and repo `[installer@mano-repo-server ~]$ `).
+# profiles:
+#   sbc:
+#     prompt: "<LabP1-oam-a:root>/root:\n# "
+#     interactive:
+#       - "Enter return to acknowledge message of the day:"
+#       - "Command line editor? (default = vi):"
+
+checksum:
+  # logical keys whose NODE-side checksum should be corrupted (forces a mismatch).
+  force_mismatch: []
+
+rules: []   # ordered command overrides; see the other scenarios for examples

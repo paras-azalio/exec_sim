@@ -1,0 +1,32 @@
+# AUTO-ROLLBACK #2 - fails after the ACTIVE node's activity commands
+#
+# The standby node is updated successfully; the import script on the active node
+# then aborts without printing 'Script finished', so IMPORT_STATUS=FAILED and
+# ROLLBACK_REQUIRED=true with both nodes already touched.
+#
+# The simulator never reads the workflow YAML. It models the two DPA nodes and
+# the repo server; the Java engine evaluates the workflow's own conditions
+# against that behaviour.
+
+defaults:
+  shell_exit: 0
+
+users:                      # fallback only - ne_id is what really selects a node
+  g_mano_mavms_dm: dpa_node1
+  installer: repo
+
+dpa:
+  order_no: CR-DPA_DLU05082026
+  node1_name: BHPPNIMP01_DPA_01     # standby (checkProcesses -> Database: NO)
+  node2_name: BHPPNIMP01_DPA_02     # active  (checkProcesses -> Database: YES)
+  old_version: DPA19.11SP1_DLU233-Interim
+  old_tac: "271422"
+  new_version: DPA19.11SP1_DLU234-Interim
+  new_tac: "271900"
+  new_file: phones_234.dat
+  new_file_sha256: ee7074d043a79ce17e51cb3e61ef3d2b3952039b3d2238f0180a727b5b8eafab
+  start_version: old
+  faults:
+    - at: import
+      node: node2
+      mode: no_script_finished

@@ -1,0 +1,2520 @@
+version: 1.2
+name: sbc-fixed-line-configuration-automation
+
+globals:
+  vars:
+
+    # -- SBC NETCONF XML attributes --------------------------------------------
+    ne:           "ne-xxx"
+    ne_version:   "R24.7"
+    ne_type:      "SBC-signaling"
+    soi_version:  "1.0"
+    xmlns:        "http://nokia.com/yang/isbc-sig"
+    
+    # -- XML primary key columns (identify a Record within a table) -------------
+    primary_keys: "ID"
+
+    # -- Script location (on MANO / OM server) --------------------------------
+    scripts_dir:  "src/main/resources/script/python"
+
+    # -- Working directory on MANO for generated / merged XML files ------------
+    work_dir:     "/tmp/${ORDER_NO}/${NODE_NAME}"
+
+    # -- Execution control -----------------------------------------------------
+    order_number:      "${ORDER_NO}"
+    ROLLBACK_REQUIRED: "false"
+    
+    BACK_UP_LOCATION_REPO: "/repo-server/config/CR_AUTOMATION/SBC_FIXED_INSTALLATION/${CHILD_REQ_ID}/${NODE_NAME}"
+    LOCAL_PATH: "/mnt/shared_data/${CHILD_REQ_ID}/${NODE_NAME}/XML"
+    
+    
+    EXECUTED_TABLES: ""
+    ROLLBACK_EXECUTED_TABLES: ""
+
+    # -- Checksum retry control (DPA-style) ------------------------------------
+    LOOP_RETRY: [1, 2]        # attempt count = list length
+    RETRY_COUNT: 2
+    
+    ACTIVITY_PYTHON_SCRIPT_PATH: '/data/cloud-user/om/install/sas/bin/macro_server/java/CLICR/ANY/V1/script/python'
+    ROLLBACK_PYTHON_SCRIPT_PATH: '/data/cloud-user/om/install/sas/bin/macro_server/java/CLICR/ANY/V1/script/python'
+    
+    USER: 'root'
+
+    SBC_OM_INTERFACE: 'oam.1151'
+    REPO_IP_V4: '127.0.0.1'
+    REPO_IP_V6: '2401:4900:24:439::3'    
+
+  defaults:
+    timeout_sec:             300
+    interaction_timeout_sec: 60
+    log_level:               detailed
+    on_failure:              stop
+
+# -- Node connections ----------------------------------------------------------
+nodes:
+  niam_sbc_server:
+    type:   remote
+    plugin: ssh
+    prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+    category: internal
+    ssh:
+      host: "127.0.0.1"
+      port: "2222"
+      user: "admin"
+      auth:
+        password: "admin"
+      ne_id: "${niamID}"
+      connect_timeout_sec: 300
+      read_timeout_sec: 180
+      keepalive_sec: 30
+      strict_host_key_checking: false
+
+  locals:
+    type:   remote
+    plugin: ssh
+    prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+    category: internal
+    ssh:
+      host: "127.0.0.1"
+      port: "2222"
+      user: "admin"
+      auth:
+        password: "admin"
+      ne_id: "${niamID}"
+      connect_timeout_sec: 300
+      read_timeout_sec: 180
+      keepalive_sec: 30
+      strict_host_key_checking: false
+ 
+      
+      
+  
+
+  repo_server:
+    type: remote
+    plugin: ssh
+    prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+    ssh:
+      host: "127.0.0.1"
+      port: 2222
+      user: "admin"
+      auth:
+        password: "admin"
+      connect_timeout_sec: 15
+      read_timeout_sec: 120
+      keepalive_sec: 30
+      strict_host_key_checking: false
+      
+  repo_server_sftp:
+    type: sftp
+    plugin: sftp-plugin
+    sftp:
+      host: "127.0.0.1"
+      user: "admin"
+      auth:
+        password: "admin"
+      strict_host_key_checking: false
+      connect_timeout_sec: 15 
+ 
+  
+
+# -- Phases --------------------------------------------------------------------
+phases:
+
+  preNodeHealthCheck:
+    name:        "PRE_NODE_HEALTH_CHECK"
+    description: "Capture SBC node health baseline before configuration activity"
+    when: '${ROLLBACK_ONLY != "true"}'
+    on_failure: stop
+    steps:
+    
+ #     - node: niam_sbc_server
+ #       command_description: "Performs a system and configuration health check."
+ #       send: 'cm_adm -a health'
+ #       on_failure: stop
+ #       prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+ #       register:
+ #         - regex: '(?<PCSSTATUS>No outstanding PCS procedures\.)'
+ #         - regex: '(?<AUDITSTATUS>Health check passed, no audit errors were detected\.)'
+ #         - regex: '(?<COMMANDSTATUS>Command succeeded!)' 
+ #       validation:
+ #         enabled: true
+ #         description: "Validate {Check final String= 'No outstanding PCS procedures.' And 'Health check passed, no audit errors were detected.' & 'Command succeeded!'"
+ #         success:
+ #           criteria:
+ #             expr: '${PCSSTATUS != "" && AUDITSTATUS != "" && COMMANDSTATUS != ""}'
+ #           message: "SBC Health check passed, no audit errors were detected."
+ #         failure:
+ #           message: "SBC health validation failed."
+
+#      - node: niam_sbc_server
+#        command_description: "Displays the status of all SBC virtual machines."
+#        send: 'virsh list --all'
+#        on_failure: stop
+#        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+#        register:
+#         - regex: '(?<BADVMSTATE>shut off|paused|crashed|idle|waiting)'
+#        validation:
+#          enabled: true
+#          description: "Verify every VM listed has State = running."
+#          success:
+#            criteria:
+#              expr: '${BADVMSTATE == ""}'
+#            message: "All VMs are in running state."
+#          failure:
+#            message: "One or more VMs are in a state other than running (e.g., shut off, paused, crashed)."
+
+
+      # - node: niam_sbc_server
+      #   command_description: "Runs comprehensive health checks on SBC components and media planes."
+      #   send: 'sbc_health --test all'
+      #   timeout_sec: 300
+      #   on_failure: continue
+      #   prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      #   register:
+      #     - regex: '(?<CHKALLSUCCESS>chk_all completed successfully)'
+      #     - regex: 'NAME = media01[\s\S]*?\|\s*(?<MEDIA01CRITI>\d+)\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|'
+      #     - regex: 'NAME = media02[\s\S]*?\|\s*(?<MEDIA02CRITI>\d+)\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|'
+      #   validation:
+      #     enabled: true
+      #     description: >
+      #       Verify:
+      #         - Output contains "chk_all completed successfully"
+      #         - CRITI = 0 for both Media Planes.
+      #     success:
+      #       criteria:
+      #         expr: '${CHKALLSUCCESS != "" && MEDIA01CRITI == "0" && MEDIA02CRITI == "0"}'
+      #       message: "Health test completes successfully and no critical issues are detected on either Media Plane."
+      #     failure:
+      #       message: "Completion message missing, CRITI value greater than 0."
+                    
+      - node: niam_sbc_server
+        command_description: "Verifies the health of the alarm subsystem."
+        send: 'alarm_check --action health'
+        on_failure: continue
+        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+        register:
+          - regex: '(?<ALARMHEALTHSTATUS>Alarm health check passed)'
+        validation:
+          enabled: true
+          description: >
+            Verify output contains "Alarm health check passed".
+          success:
+            criteria:
+              expr: '${ALARMHEALTHSTATUS != ""}'
+            message: "Alarm health check passes successfully."
+          failure:
+            message: "Alarm Health Check Failed."
+
+      - node: niam_sbc_server
+        command_description: "Displays current alarms on the SBC node."
+        send: 'alarm_cli --list all'
+        on_failure: continue
+        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+        register:
+          - regex: '(?<INFORMATIONALEXPECTE>.*)'
+        validation:
+          enabled: false
+          description: "Informational command used to review current alarms."
+          failure:
+              message: "No Validation"
+              
+      - node: niam_sbc_server
+        command_description: "Displays LCP host and service member status."
+        send: 'lcp_status'
+        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+        on_failure: continue
+        register:
+         - name: INVALIDHOST
+           value: ""
+         - name: INVALIDSERVICE
+           value: ""
+         - regex: '(?ms)Host info:.*?(?<INVALIDHOST>\b(DISABLED|FAILED|LOCKED|OUTOFSERVICE|UNKNOWN)\b).*?Service Members Info'
+         - regex: '(?ms)Service Members Info:.*?(?<INVALIDSERVICE>\b(DISABLED|FAILED|LOCKED|OUTOFSERVICE|UNKNOWN)\b)'
+        validation:
+          enabled: true
+          description: >
+            Verify:
+              - Every Host Info Status = ENABLED
+              - Service Member status values are valid (ENABLED, ENABLEDUNLOCKED, HOTSTANDBY, NOTRELEVANT).
+          success:
+            criteria:
+               expr: '${INVALIDHOST == "" && INVALIDSERVICE == ""}'
+            message: "All hosts are enabled and service members show valid operational states." 
+          failure:
+            message: "One or more hosts are not ENABLED, or service members show invalid/unexpected states."
+
+      - node: niam_sbc_server
+        command_description: "Displays REM service and redundancy status."
+        send: 'rem_srv_state --action display --set all'
+        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+        on_failure: stop
+        on_failure_message: "One or more services are out of service, in an invalid state, or REM controller roles are incorrect/missing. Execution will stop"
+        register:
+          - name: INVALIDCARDSTATE
+            value: ""
+          - name: INVALIDREMCSTATE
+            value: ""
+          - regex: '(?m)(?<INVALIDCARDSTATE>^\d+\s+\d+\s+\d+\s+\S+\s+\S+\s+\S+\s+(?!InserviceActive\b|InserviceStbyHot\b)\S+)'
+          - regex: '(?<INVALIDREMCSTATE>REMc is (?!Active\b|Stby\b)\S+)'
+        validation:
+          enabled: true
+          description: >
+            Verify:
+              - Status is either InserviceActive or InserviceStbyHot for all entries.
+              - REM Controller (REMc) role is Active or Stby.
+          success:
+            criteria:
+               expr: '${INVALIDCARDSTATE == "" && INVALIDREMCSTATE == ""}'
+            message: "All services are in valid in-service states and REM controllers have valid redundancy roles."
+          failure:
+            message: "One or more services are out of service, in an invalid state, or REM controller roles are incorrect/missing."
+            
+            
+
+
+    # -- 2. Backup ---------------------------------------------------------------
+
+  backup:
+    name:        "BACKUP"
+    description: "Full NETCONF backup of SBC signaling and media plane configurations"
+    when: '${ROLLBACK_ONLY != "true"}'
+    steps:
+    
+    - node: niam_sbc_server
+      command_description: "Get LCP management IP address and type"
+      send: |-
+        lcp_status | awk '$1=="MI" && $4=="ENABLED"{n=split($6,a,","); for(i=1;i<=n;i++) if(a[i]~/^[0-9]+\./ && a[i]!~/^169\.254\./){print a[i]" (IPv4)"; found=1; exit} for(i=1;i<=n;i++) if(a[i]~/:/){print a[i]" (IPv6)"; found=1; exit}} END{exit !found}'
+      use_exit_code: true
+      on_failure: stop
+      register:
+        - regex: '(?<LCPIP>[^\s]+)\s+\((?<LCPIPTYPE>IPv4|IPv6)\)'
+        - name: repo_server_ip
+          when: ${LCPIPTYPE == "IPv4"}
+          value: ${REPO_IP_V4}
+        - name: repo_server_ip
+          when: ${LCPIPTYPE == "IPv6"}
+          value: "[${REPO_IP_V6}]"
+          
+    - node: niam_sbc_server
+      command_description: "date"
+      send: 'date +%Y-%m-%d_%H-%M-%S'
+      on_failure: stop
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      register:
+        - regex: '(?<DATE>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})'
+
+    - node: niam_sbc_server
+      command_description: "Take full signaling-plane Configuration backup (root)"
+      send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}.xml'
+      on_failure: continue
+      use_exit_code: true
+      register:
+          - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+          - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+      validation:
+        enabled: true
+        description: "Verify Configuration backup completes successfully and  backup XML file is created."
+        success:
+          criteria:
+            expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+          message: "Signaling-plane Configuration backup created successfully."
+          vars:
+           XML_BACKUP: "true"
+           NETCONF_ROOT_OK: "true"
+        warning:
+          message: "root could not run netconfprov (or command failed); retrying with netconfcli user."
+          vars:
+           XML_BACKUP: "false"
+           NETCONF_ROOT_OK: "false"
+           USER: 'netconfcli'
+
+    - node: niam_sbc_server
+      command_description: "Take full signaling-plane Configuration backup (netconfcli fallback)"
+      when: '${NETCONF_ROOT_OK == "false"}'
+      var_meta:
+        NETCONF_ROOT_OK: "NETCONF command ran with root user"
+      send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user netconfcli --pemfile /var/webui/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}.xml'
+      on_failure: stop
+      use_exit_code: true
+      register:
+          - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+      validation:
+        enabled: true
+        description: "Verify Configuration backup (netconfcli) completes successfully and backup XML file is created."
+        success:
+          criteria:
+            expr: '${ERRORMSG == ""}'
+          message: "Signaling-plane Configuration backup created successfully via netconfcli."
+          vars:
+           XML_BACKUP: "true"
+        failure:
+          message: "Failed to create signaling-plane Configuration backup with netconfcli."
+          vars:
+           XML_BACKUP: "false"
+          
+    - node: niam_sbc_server
+      command_description: "Finding Checksum for the backup file"
+      when: '${XML_BACKUP == "true"}'
+      send: "sha256sum /storage/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$' 
+      on_failure: stop
+      register:
+        - regex: '(?m)^(?<BACKUPNODECHECKSUM>[a-fA-F0-9]{64})$'     
+    
+    - node: repo_server
+      command_description: "Creating a Directory for Backup Files"
+      send: "mkdir -p ${BACK_UP_LOCATION_REPO}"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      on_failure: stop
+      
+    - node: niam_sbc_server
+      command_description: "SFTP upload backup from SBC Node to Repository Server"
+      send: >-
+         printf "put /storage/Signaling_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+      on_failure: stop
+      expect_reply:
+        - expect: 'password:'
+          reply: 'admin'
+      use_exit_code: true
+      retries: 5
+      retry_delay_sec: 15
+      retry_on:
+        - non_zero_exit
+        - regex_miss
+        - timeout
+      register:
+          - regex: '(?<FILECOPY>100%)'
+      validation:
+        enabled: true
+        description: "Backup XML file is transferred successfully from SBC Node to Repository Server."
+        success:
+          criteria:
+            expr: '${FILECOPY != ""}'
+          message: "Successfully uploaded backup file to the repository server."
+        warning:
+            message: "Failed to upload backup file to the repository server."
+          
+          
+    - node: repo_server
+      command_description: "Finding and Comparing Checksum for Uploaded File"
+      send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$' 
+      on_failure: continue
+      timeout_sec: 120
+      on_failure_message: "If all retries are exhausted then execution will be stopped."
+      register:
+        - regex: '(?<BACKUPREPOCHECKSUM>[a-fA-F0-9]+)'
+      validation:
+        enabled: true
+        description: "Checksum of the repository file matches the checksum of the original backup file."
+        success:
+          criteria:
+            expr: '${BACKUPNODECHECKSUM == BACKUPREPOCHECKSUM}'
+          message: "Backup file integrity verified. Checksums match."
+          vars:
+            CHECKSUM_STATUS: "SUCCESS"
+        warning:
+          message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+          vars:
+            CHECKSUM_STATUS: "FAILED"
+    - type: loop
+      command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+      for_each: "${LOOP_RETRY}"
+      item_var: ATTEMPT
+      when: '${CHECKSUM_STATUS != "SUCCESS"}'
+      break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+      hide_when_skipped: true
+      steps:
+        - node: niam_sbc_server
+          command_description: "Attempt ${ATTEMPT} - re-upload signaling backup to repo"
+          send: >-
+            printf "put /storage/Signaling_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+          on_failure: continue
+          expect_reply:
+            - expect: 'password:'
+              reply: 'admin' 
+          use_exit_code: true
+          retries: 5
+          retry_delay_sec: 15
+          retry_on:
+            - non_zero_exit
+            - regex_miss
+            - timeout
+          register:
+              - regex: '(?<FILECOPY>100%)'
+          validation:
+            enabled: true
+            description: "Backup XML file is transferred successfully from SBC Node to Repository Server."
+            success:
+              criteria:
+                expr: '${FILECOPY != ""}'
+              message: "Successfully uploaded backup file to the repository server."
+            warning:
+                message: "Failed to upload backup file to the repository server."
+        - node: repo_server
+          command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+          send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+          prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+          on_failure: continue
+          timeout_sec: 30
+          register:
+            - regex: '(?<BACKUPREPOCHECKSUM>[a-fA-F0-9]+)'
+          validation:
+            enabled: true
+            description: "Compare checksum on retry attempt ${ATTEMPT}"
+            success:
+              criteria:
+                expr: '${BACKUPNODECHECKSUM == BACKUPREPOCHECKSUM}'
+              message: "CheckSum is same."
+              vars:
+                CHECKSUM_STATUS: "SUCCESS"
+            warning:
+              message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+              vars:
+                CHECKSUM_STATUS: "FAILED"
+
+    - node: locals
+      command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+      send: "echo checksum-guard"
+      when: '${CHECKSUM_STATUS != "SUCCESS"}'
+      hide_when_skipped: true
+      on_failure: stop
+      validation:
+        enabled: true
+        description: "Runs only when checksum did not match after all retries; always fails to abort."
+        success:
+          criteria:
+            expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+          message: "checksum matched"
+        failure:
+          message: "Checksum did not match after all retry attempts - aborting."
+
+    # - node: repo_server_sftp
+    #   sftp:
+    #     operation: download
+    #     local_path: "${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml"  #om path
+    #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml"   #repo path
+    #     overwrite: true              
+    #     create_dirs: true
+    #   command_description: "SFTP upload backup from Repo to Local"      
+        
+    - node: locals
+      command_description: "Finding and Comparing Checksum for Uploaded File."
+      send: "sha256sum ${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$' 
+      on_failure: continue
+      on_failure_message: "If all retries are exhausted then execution will be stopped."
+      register:
+        - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+      validation:
+        enabled: true
+        description: "Checksum of the locals file matches the checksum of the repository backup file."
+        success:
+          criteria:
+            expr: '${BACKUPREPOCHECKSUM == LOCALCHECKSUM}'
+          message: "Backup file integrity verified. Checksums match."
+          vars:
+            CHECKSUM_STATUS: "SUCCESS"
+        warning:
+          message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+          vars:
+            CHECKSUM_STATUS: "FAILED"
+    - type: loop
+      command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+      for_each: "${LOOP_RETRY}"
+      item_var: ATTEMPT
+      when: '${CHECKSUM_STATUS != "SUCCESS"}'
+      break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+      hide_when_skipped: true
+      steps:
+        # - node: repo_server_sftp
+        #   command_description: "Attempt ${ATTEMPT} - re-download signaling from repo to locals"
+        #   sftp:
+        #     operation: download
+        #     local_path: "${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml"
+        #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml"
+        #     overwrite: true
+        #     create_dirs: true
+        #   command_description: "SFTP upload backup from Repo to Local"  
+        - node: locals
+          command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+          send: "sha256sum ${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+          prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+          on_failure: continue
+          timeout_sec: 120
+          register:
+            - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+          validation:
+            enabled: true
+            description: "Compare checksum on retry attempt ${ATTEMPT}"
+            success:
+              criteria:
+                expr: '${BACKUPREPOCHECKSUM == LOCALCHECKSUM}'
+              message: "CheckSum is same."
+              vars:
+                CHECKSUM_STATUS: "SUCCESS"
+            warning:
+              message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+              vars:
+                CHECKSUM_STATUS: "FAILED"
+
+    - node: locals
+      command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+      send: "echo checksum-guard"
+      when: '${CHECKSUM_STATUS != "SUCCESS"}'
+      hide_when_skipped: true
+      on_failure: stop
+      validation:
+        enabled: true
+        description: "Runs only when checksum did not match after all retries; always fails to abort."
+        success:
+          criteria:
+            expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+          message: "checksum matched"
+        failure:
+          message: "Checksum did not match after all retry attempts - aborting."
+
+    - node: niam_sbc_server
+      command_description: "Take media-plane 1 Configuration backup (root)"
+      send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane media --user ${USER} --pemfile /root/.ssh/id_rsa --readall --mediaid 1 > /storage/MGW01_${NODE_NAME}_${DATE}.xml'
+      on_failure: continue
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      register:
+          - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+          - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+      validation:
+        enabled: true
+        description: "Media Plane 1 backup command completes successfully and XML backup file is created."
+        success:
+          criteria:
+            expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+          message: "Media Plane 1 Configuration  backup created successfully."
+          vars:
+            NETCONF_ROOT_OK: "true"
+        warning:
+          message: "root could not run netconfprov (or command failed); retrying with netconfcli user."
+          vars:
+            NETCONF_ROOT_OK: "false"
+
+    - node: niam_sbc_server
+      command_description: "Finding Checksum for the media-plane 1 backup file"
+      send: "sha256sum /storage/MGW01_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      on_failure: stop
+      register:
+        - regex: '(?m)^(?<MGW01NODECHECKSUM>[a-fA-F0-9]{64})$'
+
+    - node: niam_sbc_server
+      command_description: "SFTP upload media-plane 1 backup from SBC Node to Repository Server"
+      send: >-
+        printf "put /storage/MGW01_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/MGW01_Activity.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+      on_failure: stop
+      use_exit_code: true
+      retries: 5
+      retry_delay_sec: 15
+      retry_on:
+        - non_zero_exit
+        - regex_miss
+        - timeout
+      expect_reply:
+        - expect: 'password:'
+          reply: 'admin'
+      register:
+          - regex: '(?<MGW01FILECOPY>100%)'
+      validation:
+        enabled: true
+        description: "Media-plane 1 backup XML file is transferred successfully from SBC Node to Repository Server."
+        success:
+          criteria:
+            expr: '${MGW01FILECOPY != ""}'
+          message: "Successfully uploaded media-plane 1 backup file to the repository server."
+        warning:
+            message: "Failed to upload media-plane 1 backup file to the repository server."
+
+    - node: repo_server
+      command_description: "Finding and Comparing Checksum for Uploaded media-plane 1 File"
+      send: "sha256sum ${BACK_UP_LOCATION_REPO}/MGW01_Activity.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      on_failure: continue
+      timeout_sec: 120
+      on_failure_message: "If all retries are exhausted then execution will be stopped."
+      register:
+        - regex: '(?<MGW01REPOCHECKSUM>[a-fA-F0-9]+)'
+      validation:
+        enabled: true
+        description: "Checksum of the repository media-plane 1 file matches the checksum of the original backup file."
+        success:
+          criteria:
+            expr: '${MGW01NODECHECKSUM == MGW01REPOCHECKSUM}'
+          message: "Media-plane 1 backup file integrity verified. Checksums match."
+          vars:
+            MGW01CHECKSUMSTATUS: "SUCCESS"
+        warning:
+          message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+          vars:
+            MGW01CHECKSUMSTATUS: "FAILED"
+
+    - type: loop
+      command_description: "Retry media-plane 1 transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+      for_each: "${LOOP_RETRY}"
+      item_var: ATTEMPT
+      when: '${MGW01CHECKSUMSTATUS != "SUCCESS"}'
+      break_when: '${MGW01CHECKSUMSTATUS == "SUCCESS"}'
+      hide_when_skipped: true
+      steps:
+        - node: niam_sbc_server
+          command_description: "Attempt ${ATTEMPT} - re-upload media-plane 1 backup to repo"
+          send: >-
+            printf "put /storage/MGW01_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/MGW01_Activity.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+          use_exit_code: true
+          retries: 5
+          retry_delay_sec: 15
+          retry_on:
+            - non_zero_exit
+            - regex_miss
+            - timeout
+          on_failure: continue
+          expect_reply:
+            - expect: 'password:'
+              reply: 'admin'
+          register:
+              - regex: '(?<MGW01FILECOPY>100%)'
+          validation:
+            enabled: true
+            description: "Media-plane 1 backup XML file is transferred successfully from SBC Node to Repository Server."
+            success:
+              criteria:
+                expr: '${MGW01FILECOPY != ""}'
+              message: "Successfully uploaded media-plane 1 backup file to the repository server."
+            warning:
+                message: "Failed to upload media-plane 1 backup file to the repository server."
+        - node: repo_server
+          command_description: "Attempt ${ATTEMPT} - re-verify media-plane 1 checksum"
+          send: "sha256sum ${BACK_UP_LOCATION_REPO}/MGW01_Activity.xml | awk '{print $1}'"
+          prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+          on_failure: continue
+          timeout_sec: 30
+          register:
+            - regex: '(?<MGW01REPOCHECKSUM>[a-fA-F0-9]+)'
+          validation:
+            enabled: true
+            description: "Compare media-plane 1 checksum on retry attempt ${ATTEMPT}"
+            success:
+              criteria:
+                expr: '${MGW01NODECHECKSUM == MGW01REPOCHECKSUM}'
+              message: "CheckSum is same."
+              vars:
+                MGW01CHECKSUMSTATUS: "SUCCESS"
+            warning:
+              message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+              vars:
+                MGW01CHECKSUMSTATUS: "FAILED"
+
+    - node: locals
+      command_description: "Abort if media-plane 1 checksum still mismatched after ${RETRY_COUNT} retries"
+      send: "echo checksum-guard"
+      when: '${MGW01CHECKSUMSTATUS != "SUCCESS"}'
+      hide_when_skipped: true
+      on_failure: stop
+      validation:
+        enabled: true
+        description: "Runs only when media-plane 1 checksum did not match after all retries; always fails to abort."
+        success:
+          criteria:
+            expr: '${MGW01CHECKSUMSTATUS == "SUCCESS"}'
+          message: "checksum matched"
+        failure:
+          message: "Media-plane 1 checksum did not match after all retry attempts - aborting."
+
+    - node: niam_sbc_server
+      command_description: "Take media-plane 2 Configuration  backup (root)"
+      send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane media --user ${USER} --pemfile /root/.ssh/id_rsa --readall --mediaid 2 > /storage/MGW02_${NODE_NAME}_${DATE}.xml'
+      on_failure: continue
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      register:
+       - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+       - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+      validation:
+        enabled: true
+        description: "Media Plane 2 backup command completes successfully and XML backup file is created."
+        success:
+          criteria:
+            expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+          message: "Media Plane 2 Configuration  backup created successfully."
+          vars:
+            NETCONF_ROOT_OK: "true"
+        warning:
+          message: "root could not run netconfprov (or command failed); retrying with netconfcli user."
+          vars:
+            NETCONF_ROOT_OK: "false"
+
+    
+    - node: niam_sbc_server
+      command_description: "Finding Checksum for the media-plane 2 backup file"
+      send: "sha256sum /storage/MGW02_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      on_failure: stop
+      register:
+        - regex: '(?m)^(?<MGW02NODECHECKSUM>[a-fA-F0-9]{64})$'
+
+    - node: niam_sbc_server
+      command_description: "SFTP upload media-plane 2 backup from SBC Node to Repository Server"
+      send: >-
+        printf "put /storage/MGW02_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/MGW02_Activity.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+      use_exit_code: true
+      retries: 5
+      retry_delay_sec: 15
+      retry_on:
+        - non_zero_exit
+        - regex_miss
+        - timeout
+      on_failure: stop
+      expect_reply:
+        - expect: 'password:'
+          reply: 'admin'
+      register:
+          - regex: '(?<MGW02FILECOPY>100%)'
+      validation:
+        enabled: true
+        description: "Media-plane 2 backup XML file is transferred successfully from SBC Node to Repository Server."
+        success:
+          criteria:
+            expr: '${MGW02FILECOPY != ""}'
+          message: "Successfully uploaded media-plane 2 backup file to the repository server."
+        warning:
+            message: "Failed to upload media-plane 2 backup file to the repository server."
+
+    - node: repo_server
+      command_description: "Finding and Comparing Checksum for Uploaded media-plane 2 File"
+      send: "sha256sum ${BACK_UP_LOCATION_REPO}/MGW02_Activity.xml | awk '{print $1}'"
+      prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      on_failure: continue
+      timeout_sec: 120
+      on_failure_message: "If all retries are exhausted then execution will be stopped."
+      register:
+        - regex: '(?<MGW02REPOCHECKSUM>[a-fA-F0-9]+)'
+      validation:
+        enabled: true
+        description: "Checksum of the repository media-plane 2 file matches the checksum of the original backup file."
+        success:
+          criteria:
+            expr: '${MGW02NODECHECKSUM == MGW02REPOCHECKSUM}'
+          message: "Media-plane 2 backup file integrity verified. Checksums match."
+          vars:
+            MGW02CHECKSUMSTATUS: "SUCCESS"
+        warning:
+          message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+          vars:
+            MGW02CHECKSUMSTATUS: "FAILED"
+
+    - type: loop
+      command_description: "Retry media-plane 2 transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+      for_each: "${LOOP_RETRY}"
+      item_var: ATTEMPT
+      when: '${MGW02CHECKSUMSTATUS != "SUCCESS"}'
+      break_when: '${MGW02CHECKSUMSTATUS == "SUCCESS"}'
+      hide_when_skipped: true
+      steps:
+        - node: niam_sbc_server
+          command_description: "Attempt ${ATTEMPT} - re-upload media-plane 2 backup to repo"
+          send: >-
+            printf "put /storage/MGW02_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/MGW02_Activity.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+          use_exit_code: true
+          retries: 5
+          retry_delay_sec: 15
+          retry_on:
+            - non_zero_exit
+            - regex_miss
+            - timeout
+          on_failure: continue
+          expect_reply:
+            - expect: 'password:'
+              reply: 'admin'
+          register:
+              - regex: '(?<MGW02FILECOPY>100%)'
+          validation:
+            enabled: true
+            description: "Media-plane 2 backup XML file is transferred successfully from SBC Node to Repository Server."
+            success:
+              criteria:
+                expr: '${MGW02FILECOPY != ""}'
+              message: "Successfully uploaded media-plane 2 backup file to the repository server."
+            warning:
+                message: "Failed to upload media-plane 2 backup file to the repository server."
+        - node: repo_server
+          command_description: "Attempt ${ATTEMPT} - re-verify media-plane 2 checksum"
+          send: "sha256sum ${BACK_UP_LOCATION_REPO}/MGW02_Activity.xml | awk '{print $1}'"
+          prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+          on_failure: continue
+          timeout_sec: 30
+          register:
+            - regex: '(?<MGW02REPOCHECKSUM>[a-fA-F0-9]+)'
+          validation:
+            enabled: true
+            description: "Compare media-plane 2 checksum on retry attempt ${ATTEMPT}"
+            success:
+              criteria:
+                expr: '${MGW02NODECHECKSUM == MGW02REPOCHECKSUM}'
+              message: "CheckSum is same."
+              vars:
+                MGW02CHECKSUMSTATUS: "SUCCESS"
+            warning:
+              message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+              vars:
+                MGW02CHECKSUMSTATUS: "FAILED"
+
+    - node: locals
+      command_description: "Abort if media-plane 2 checksum still mismatched after ${RETRY_COUNT} retries"
+      send: "echo checksum-guard"
+      when: '${MGW02CHECKSUMSTATUS != "SUCCESS"}'
+      hide_when_skipped: true
+      on_failure: stop
+      validation:
+        enabled: true
+        description: "Runs only when media-plane 2 checksum did not match after all retries; always fails to abort."
+        success:
+          criteria:
+            expr: '${MGW02CHECKSUMSTATUS == "SUCCESS"}'
+          message: "checksum matched"
+        failure:
+          message: "Media-plane 2 checksum did not match after all retry attempts - aborting."
+
+    
+
+  activity_configuration:
+    name: "ACTIVITY_CONFIGURATION"
+    description: >
+      Generate NETCONF XML change-sets from CIQ JSON, then for each table:
+      download current config, merge changes, transfer merged XML to SBC,
+      and execute via netconfprov.
+    when: '${ROLLBACK_ONLY != "true"}'
+    steps: 
+
+    
+      - type: loop
+        for_each: "${configSequences}"
+        item_var: config_seq_row
+        max_iterations: 50
+        var_meta:
+          configSequences: "List of config sequences from ciq-processor JSON for current node"
+        steps:
+          - type: loop
+            for_each: "${config_seq_row.tables}"
+            item_var: table_row
+            max_iterations: 50
+            steps:
+              - node: locals
+                command_description: "validate and generate network configuration xml from CIQ data according to table"
+                send: >-
+                 python ${ACTIVITY_PYTHON_SCRIPT_PATH}/netconf_generate_xml.py --json "${INPUT_JSON_FILE_NAME}" --node ${NODE_NAME} --xmlns "${xmlns}" --primary-keys "${primary_keys}" --base "${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml" --output ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml --table ${table_row.table} --group ${config_seq_row.configSeq}
+                on_failure: stop
+                register:
+                  - regex: '(?<XMLGENSTATUS>SUCCESS)'
+                validation:
+                  enabled: true
+                  description: "XML generation script completes successfully and output file ${table_row.table}_${DATE}.xml is created without validation errors."
+                  success:
+                    criteria:
+                      expr: '${XMLGENSTATUS == "SUCCESS"}'
+                    message: "Network configuration XML generated successfully from CIQ data."
+                  failure:
+                    message: "Network configuration XML not generated successfully from CIQ data."
+
+          - type: loop
+            for_each: "${config_seq_row.tables}"
+            item_var: table_row
+            max_iterations: 50
+            steps:
+
+              - node: niam_sbc_server
+                command_description: "Take full table configuration xml for ${table_row.table} before execution"
+                send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --table ${table_row.table} --read > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Precheck.xml'
+                on_failure: stop
+                use_exit_code: true
+                register:
+                  - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify ${table_row.table} completes successfully and XML file is created."
+                  success:
+                    criteria:
+                      expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+                    message: "${table_row.table}.xml is created successfully."
+                  failure:
+                    message: "Failed to apply NETCONF configuration changes with netconfcli."
+                    vars:
+                      ROLLBACK_REQUIRED: 'true' 
+
+              - node: niam_sbc_server
+                command_description: "Read configuration xml content for ${table_row.table} for prevalidation"
+                send: "cat /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Precheck.xml; echo"
+                use_exit_code: true
+                on_failure: stop
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "capture configuration xml content for ${table_row.table}"
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "capture configuration xml content successfully"
+                  failure:
+                    message: "Failed to capture configuration xml content"
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+
+              - node: locals
+                command_description: "creating network configuration xml for ${table_row.table} on locals"
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Precheck.xml && echo WRITE_OK
+                on_failure: stop
+                timeout_sec: 1200
+                validation:
+                  enabled: true
+                  description: "creating network configuration xml for ${table_row.table} on locals."
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Fail to write table network configuration xml created for ${table_row.table}"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'                      
+            
+              - node: locals
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml && echo xml_valid'
+                on_failure: stop
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+                
+
+              - node: locals
+                command_description: "Read generate network configuration xml from CIQ data for ${table_row.table} "
+                send: "cat ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml; echo"
+                on_failure: stop
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "generate network configuration xml content captured from locals."
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "content captured from node."
+                  failure:
+                    message: "Failed to captured the content from locals."
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+
+              - node: niam_sbc_server
+                command_description: "creating network configuration xml for ${table_row.table} on node"
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml && echo WRITE_OK
+                use_exit_code: true
+                timeout_sec: 1200
+                on_failure: stop
+                validation:
+                  enabled: true
+                  description: "creating network configuration xml for ${table_row.table} on node"
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Failed to write table network configuration xml for ${table_row.table}"
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+                      
+              - node: niam_sbc_server
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml && echo xml_valid'
+                on_failure: stop
+                use_exit_code: true
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+
+              - node: niam_sbc_server
+                command_description: "Apply New NETCONF XML Changes on SBC Node of ${table_row.table} (root)"
+                send: "/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --onerror abort /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml"
+                on_failure: stop
+                use_exit_code: true
+                register:
+                  - regex: '(?<NETCONFABORTED>provision is aborted.*)'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify that new NetCONF changes are applied successfully without any errors"
+                  success:
+                    criteria:
+                      expr: '${NETCONFABORTED == "" && ROOTNOTALLOWED == ""}'
+                    message: "NETCONF changes applied successfully without errors."
+                    vars:
+                      EXECUTED_TABLES: "${EXECUTED_TABLES}${table_row.table}, "
+                      NETCONF_ROOT_OK: "true"
+                  failure:
+                    message: "Failed to apply NETCONF configuration changes with netconfcli."
+                    vars:
+                      NETCONF_ROOT_OK: "false"
+                      EXECUTED_TABLES: "${EXECUTED_TABLES}${table_row.table}, "
+                      ROLLBACK_REQUIRED: 'true'
+
+              - node: niam_sbc_server
+                command_description: "Take full table configuration xml for ${table_row.table} (root)"
+                send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --table ${table_row.table} --read > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Postcheck.xml'
+                on_failure: stop
+                use_exit_code: true
+                register:
+                  - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify ${table_row.table} completes successfully and XML file is created."
+                  success:
+                    criteria:
+                      expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+                    message: "${table_row.table}.xml is created successfully."
+                    vars:
+                      NETCONF_ROOT_OK: "true"
+                  failure:
+                    message: "Failed to apply NETCONF configuration changes with netconfcli."
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+                      NETCONF_ROOT_OK: "false"
+                      
+              - node: niam_sbc_server
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml && echo xml_valid'
+                on_failure: stop
+                use_exit_code: true
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+
+              - node: niam_sbc_server
+                command_description: "Read configuration xml content for ${table_row.table} for postcheck"
+                send: "cat /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Postcheck.xml; echo"
+                use_exit_code: true
+                on_failure: stop
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "capture configuration xml content for ${table_row.table}"
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "capture configuration xml content successfully"
+                  failure:
+                    message: "Failed to capture configuration xml content"
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+
+              - node: locals
+                command_description: "creating network configuration xml for ${table_row.table} on locals"
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Postcheck.xml && echo WRITE_OK
+                on_failure: stop
+                timeout_sec: 1200
+                validation:
+                  enabled: true
+                  description: "creating network configuration xml for ${table_row.table} on locals."
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Fail to write table network configuration xml created for ${table_row.table}"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+                      
+              - node: locals
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Activity.xml && echo xml_valid'
+                on_failure: stop
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'
+
+              - node: locals
+                command_description: "verify all the changes"
+                send: >-
+                  python ${ACTIVITY_PYTHON_SCRIPT_PATH}/netconf_generate_xml.py --json "${INPUT_JSON_FILE_NAME}" --node ${NODE_NAME} --xmlns "${xmlns}" --primary-keys "${primary_keys}" --current "${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Postcheck.xml" --table ${table_row.table} --postcheck --group ${config_seq_row.configSeq}
+                on_failure: stop
+                register:
+                  - regex: '(?<POSTCHECKSTATUS>POSTCHECK PASSED)'
+                validation:
+                  enabled: true
+                  description: "Verify all the changes are coming"
+                  success:
+                    criteria:
+                      expr: '${POSTCHECKSTATUS == "POSTCHECK PASSED"}'
+                    message: "Verification Success"
+                  failure:
+                    message: "Verification Failed for new xml."
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+   
+
+          - node: niam_sbc_server
+            command_description: "date"
+            send: 'date +%Y-%m-%d_%H-%M-%S'
+            on_failure: stop
+            use_exit_code: true
+            register:
+              - regex: '(?<DATE>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})'
+            validation:
+              enabled: true
+              description: "capturing the date and time"
+              success:
+                criteria:
+                  expr: '${DATE != ""}'
+                message: "captured the date and time."
+                vars:
+                 XML_BACKUP: "true"
+                 NETCONF_ROOT_OK: "true"
+              warning:
+                message: "failed to captured the date and time."
+                vars:
+                 XML_BACKUP: "false"
+                 NETCONF_ROOT_OK: "false"
+                 ROLLBACK_REQUIRED: 'true'
+            
+          
+          - node: niam_sbc_server
+            command_description: "Take full signaling-plane Configuration backup for validating the diff group changes"
+            send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}.xml'
+            on_failure: stop
+            use_exit_code: true
+            register:
+                - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+                - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+            validation:
+              enabled: true
+              description: "Verify Configuration xml downloaded completes successfully"
+              success:
+                criteria:
+                  expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+                message: "Signaling-plane Configuration backup created successfully."
+                vars:
+                 XML_BACKUP: "true"
+                 NETCONF_ROOT_OK: "true"
+              warning:
+                message: "Failed to to create Signaling-plane Configuration backup."
+                vars:
+                 XML_BACKUP: "false"
+                 NETCONF_ROOT_OK: "false"
+                 ROLLBACK_REQUIRED: 'true'
+                
+          - node: niam_sbc_server
+            command_description: "Finding Checksum for the backup file"
+            when: '${XML_BACKUP == "true"}'
+            send: "sha256sum /storage/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+            prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$' 
+            on_failure: stop
+            register:
+              - regex: '(?m)^(?<BACKUPNODECHECKSUM>[a-fA-F0-9]{64})$'     
+          
+          - node: repo_server
+            command_description: "Creating a Directory for Backup Files"
+            send: "mkdir -p ${BACK_UP_LOCATION_REPO}"
+            prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+            on_failure: stop
+            
+          - node: niam_sbc_server
+            command_description: "SFTP upload backup from SBC Node to Repository Server"
+            send: >-
+               printf "put /storage/Signaling_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+            on_failure: stop
+            expect_reply:
+              - expect: 'password:'
+                reply: 'admin'
+            use_exit_code: true
+            retries: 5
+            retry_delay_sec: 15
+            retry_on:
+              - non_zero_exit
+              - regex_miss
+              - timeout
+            register:
+                - regex: '(?<FILECOPY>100%)'
+            validation:
+              enabled: true
+              description: "Backup XML file is transferred successfully from SBC Node to Repository Server."
+              success:
+                criteria:
+                  expr: '${FILECOPY != ""}'
+                message: "Successfully uploaded backup file to the repository server."
+              warning:
+                  message: "Failed to upload backup file to the repository server."
+                  vars:
+                   XML_BACKUP: "false"
+                   NETCONF_ROOT_OK: "false"
+                   ROLLBACK_REQUIRED: 'true'
+                
+                
+          - node: repo_server
+            command_description: "Finding and Comparing Checksum for Uploaded File"
+            send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+            prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$' 
+            on_failure: continue
+            timeout_sec: 120
+            on_failure_message: "If all retries are exhausted then execution will be stopped."
+            register:
+              - regex: '(?<BACKUPREPOCHECKSUM>[a-fA-F0-9]+)'
+            validation:
+              enabled: true
+              description: "Checksum of the repository file matches the checksum of the original backup file."
+              success:
+                criteria:
+                  expr: '${BACKUPNODECHECKSUM == BACKUPREPOCHECKSUM}'
+                message: "Backup file integrity verified. Checksums match."
+                vars:
+                  CHECKSUM_STATUS: "SUCCESS"
+              warning:
+                message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times. If it will fail AutoRollback will trigger"
+                vars:
+                  CHECKSUM_STATUS: "FAILED"
+                  
+          - type: loop
+            command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+            for_each: "${LOOP_RETRY}"
+            item_var: ATTEMPT
+            when: '${CHECKSUM_STATUS != "SUCCESS"}'
+            break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+            hide_when_skipped: true
+            steps:
+              - node: niam_sbc_server
+                command_description: "Attempt ${ATTEMPT} - re-upload signaling backup to repo"
+                send: >-
+                  printf "put /storage/Signaling_${NODE_NAME}_${DATE}.xml ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+                on_failure: continue
+                expect_reply:
+                  - expect: 'password:'
+                    reply: 'admin' 
+                use_exit_code: true
+                retries: 5
+                retry_delay_sec: 15
+                retry_on:
+                  - non_zero_exit
+                  - regex_miss
+                  - timeout
+                register:
+                    - regex: '(?<FILECOPY>100%)'
+                validation:
+                  enabled: true
+                  description: "Backup XML file is transferred successfully from SBC Node to Repository Server."
+                  success:
+                    criteria:
+                      expr: '${FILECOPY != ""}'
+                    message: "Successfully uploaded backup file to the repository server."
+                  warning:
+                      message: "Failed to upload backup file to the repository server."
+              - node: repo_server
+                command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+                send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+                prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+                on_failure: continue
+                timeout_sec: 30
+                register:
+                  - regex: '(?<BACKUPREPOCHECKSUM>[a-fA-F0-9]+)'
+                validation:
+                  enabled: true
+                  description: "Compare checksum on retry attempt ${ATTEMPT}"
+                  success:
+                    criteria:
+                      expr: '${BACKUPNODECHECKSUM == BACKUPREPOCHECKSUM}'
+                    message: "CheckSum is same."
+                    vars:
+                      CHECKSUM_STATUS: "SUCCESS"
+                  warning:
+                    message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+                    vars:
+                      CHECKSUM_STATUS: "FAILED"
+          
+          - node: locals
+            command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+            send: "echo checksum-guard"
+            when: '${CHECKSUM_STATUS != "SUCCESS"}'
+            hide_when_skipped: true
+            on_failure: stop
+            validation:
+              enabled: true
+              description: "Runs only when checksum did not match after all retries; always fails to abort."
+              success:
+                criteria:
+                  expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+                message: "checksum matched"
+              failure:
+                message: "Checksum did not match after all retry attempts - aborting."
+                vars: 
+                 ROLLBACK_REQUIRED: 'true'
+                
+          
+          # - node: repo_server_sftp
+          #   sftp:
+          #     operation: download
+          #     local_path: "${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml"  #om path
+          #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml"   #repo path
+          #     overwrite: true              
+          #     create_dirs: true
+          #   command_description: "SFTP upload backup from Repo to Local"      
+              
+          - node: locals
+            command_description: "Finding and Comparing Checksum for Uploaded File."
+            send: "sha256sum ${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+            prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+            on_failure: continue
+            on_failure_message: "If all retries are exhausted then execution will be stopped."
+            register:
+              - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+            validation:
+              enabled: true
+              description: "Checksum of the locals file matches the checksum of the repository backup file."
+              success:
+                criteria:
+                  expr: '${BACKUPREPOCHECKSUM == LOCALCHECKSUM}'
+                message: "Backup file integrity verified. Checksums match."
+                vars:
+                  CHECKSUM_STATUS: "SUCCESS"
+              warning:
+                message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times. If it will fail AutoRollback will trigger"
+                vars:
+                  CHECKSUM_STATUS: "FAILED"
+          - type: loop
+            command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+            for_each: "${LOOP_RETRY}"
+            item_var: ATTEMPT
+            when: '${CHECKSUM_STATUS != "SUCCESS"}'
+            break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+            hide_when_skipped: true
+            steps:
+              # - node: repo_server_sftp
+              #   command_description: "Attempt ${ATTEMPT} - re-download signaling from repo to locals"
+              #   sftp:
+              #     operation: download
+              #     local_path: "${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml"
+              #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${NODE_NAME}_${DATE}.xml"
+              #     overwrite: true
+              #     create_dirs: true
+              #   command_description: "SFTP upload backup from Repo to Local"  
+              - node: locals
+                command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+                send: "sha256sum ${LOCAL_PATH}/Signaling_${NODE_NAME}_${DATE}.xml | awk '{print $1}'"
+                prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+                on_failure: continue
+                timeout_sec: 120
+                register:
+                  - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+                validation:
+                  enabled: true
+                  description: "Compare checksum on retry attempt ${ATTEMPT}"
+                  success:
+                    criteria:
+                      expr: '${BACKUPREPOCHECKSUM == LOCALCHECKSUM}'
+                    message: "CheckSum is same."
+                    vars:
+                      CHECKSUM_STATUS: "SUCCESS"
+                  warning:
+                    message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+                    vars:
+                      CHECKSUM_STATUS: "FAILED"
+          
+          - node: locals
+            command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+            send: "echo checksum-guard"
+            when: '${CHECKSUM_STATUS != "SUCCESS"}'
+            hide_when_skipped: true
+            on_failure: stop
+            validation:
+              enabled: true
+              description: "Runs only when checksum did not match after all retries; always fails to abort."
+              success:
+                criteria:
+                  expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+                message: "checksum matched"
+              failure:
+                message: "Checksum did not match after all retry attempts - aborting."
+                vars: 
+                 ROLLBACK_REQUIRED: 'true'
+          
+  postNodeHealthCheck:
+    name:        "POST_NODE_HEALTH_CHECK"
+    description: "Verify SBC node health after configuration - compare with pre-health baseline"
+    when: '${ROLLBACK_ONLY != "true"}'
+    on_failure: stop
+    steps:
+
+ #     - node: niam_sbc_server
+ #       command_description: "Performs a system and configuration health check."
+ #       send: 'cm_adm -a health'
+ #       on_failure: continue
+ #       prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+ #       register:
+ #         - regex: '(?<PCSSTATUS>No outstanding PCS procedures\.)'
+ #         - regex: '(?<AUDITSTATUS>Health check passed, no audit errors were detected\.)'
+ #         - regex: '(?<COMMANDSTATUS>Command succeeded!)' 
+ #       validation:
+ #         enabled: true
+ #         description: "Validate {Check final String= 'No outstanding PCS procedures.' And 'Health check passed, no audit errors were detected.' & 'Command succeeded!'"
+ #         success:
+ #           criteria:
+ #             expr: '${PCSSTATUS != "" && AUDITSTATUS != "" && COMMANDSTATUS != ""}'
+ #           message: "Health check passed, no audit errors were detected, and command succeeded."
+ #         failure:
+ #           message: "Health check validation failed."
+
+#      - node: niam_sbc_server
+#        command_description: "Displays the status of all SBC virtual machines."
+#        send: 'virsh list --all'
+#        on_failure: continue
+#        prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+#        register:
+#         - regex: '(?<BADVMSTATE>shut off|paused|crashed|idle|waiting)'
+#        validation:
+#          enabled: true
+#          description: "Verify every VM listed has State = running."
+#          success:
+#            criteria:
+#              expr: '${BADVMSTATE == ""}'
+#            message: "All VMs are in running state."
+#          failure:
+#            message: "One or more VMs are in a state other than running (e.g., shut off, paused, crashed)."
+
+      # - node: niam_sbc_server
+      #   command_description: "Runs comprehensive health checks on SBC components and media planes."
+      #   send: 'sbc_health --test all'
+      #   timeout_sec: 300
+      #   on_failure: continue
+      #   prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+      #   register:
+      #     - regex: '(?<CHKALLSUCCESS>chk_all completed successfully)'
+      #     - regex: 'NAME = media01[\s\S]*?\|\s*(?<MEDIA01CRITI>\d+)\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|'
+      #     - regex: 'NAME = media02[\s\S]*?\|\s*(?<MEDIA02CRITI>\d+)\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|\s*\d+\|'
+      #   validation:
+      #     enabled: true
+      #     description: >
+      #       Verify:
+      #         - Output contains "chk_all completed successfully"
+      #         - CRITI = 0 for both Media Planes.
+      #     success:
+      #       criteria:
+      #         expr: '${CHKALLSUCCESS != "" && MEDIA01CRITI == "0" && MEDIA02CRITI == "0"}'
+      #       message: "Health test completes successfully and no critical issues are detected on either Media Plane."
+      #     failure:
+      #       message: "Completion message missing, CRITI value greater than 0."
+                    
+      - node: niam_sbc_server
+        command_description: "Verifies the health of the alarm subsystem."
+        send: 'alarm_check --action health'
+        on_failure: continue
+        use_exit_code: true
+        register:
+          - regex: '(?<ALARMHEALTHSTATUS>Alarm health check passed)'
+        validation:
+         enabled: true
+         description: >
+            Verify output contains "Alarm health check passed".
+         success:
+          criteria:
+            expr: '${ALARMHEALTHSTATUS != ""}'
+          message: "Alarm health check passes successfully."
+         warning:
+          message: "Alarm Health Check Failed."
+
+      - node: niam_sbc_server
+        command_description: "Displays current alarms on the SBC node."
+        send: 'alarm_cli --list all'
+        on_failure: continue
+        use_exit_code: true
+        register:
+          - regex: '(?<INFORMATIONALEXPECTE>.*)'
+        validation:
+          enabled: false
+          description: "Informational command used to review current alarms."
+          failure:
+              message: "No Validation"
+              
+      - node: niam_sbc_server
+        command_description: "Displays LCP host and service member status."
+        send: 'lcp_status'
+        use_exit_code: true
+        on_failure: continue
+        register:
+         - name: INVALIDHOST
+           value: ""
+         - name: INVALIDSERVICE
+           value: ""
+         - regex: '(?ms)Host info:.*?(?<INVALIDHOST>\b(DISABLED|FAILED|LOCKED|OUTOFSERVICE|UNKNOWN)\b).*?Service Members Info'
+         - regex: '(?ms)Service Members Info:.*?(?<INVALIDSERVICE>\b(DISABLED|FAILED|LOCKED|OUTOFSERVICE|UNKNOWN)\b)'
+        validation:
+          enabled: true
+          description: >
+            Verify:
+              - Every Host Info Status = ENABLED
+              - Service Member status values are valid (ENABLED, ENABLEDUNLOCKED, HOTSTANDBY, NOTRELEVANT).
+          success:
+            criteria:
+               expr: '${INVALIDHOST == "" && INVALIDSERVICE == ""}'
+            message: "All hosts are enabled and service members show valid operational states." 
+          failure:
+            message: "One or more hosts are not ENABLED, or service members show invalid/unexpected states."
+
+      - node: niam_sbc_server
+        command_description: "Displays REM service and redundancy status."
+        send: 'rem_srv_state --action display --set all'
+        use_exit_code: true
+        on_failure: continue
+        on_failure_message: "One or more services are out of service, in an invalid state, or REM controller roles are incorrect/missing. Execution will stop"
+        register:
+          - name: INVALIDCARDSTATE
+            value: ""
+          - name: INVALIDREMCSTATE
+            value: ""
+          - regex: '(?m)(?<INVALIDCARDSTATE>^\d+\s+\d+\s+\d+\s+\S+\s+\S+\s+\S+\s+(?!InserviceActive\b|InserviceStbyHot\b)\S+)'
+          - regex: '(?<INVALIDREMCSTATE>REMc is (?!Active\b|Stby\b)\S+)'
+        validation:
+          enabled: true
+          description: >
+            Verify:
+              - Status is either InserviceActive or InserviceStbyHot for all entries.
+              - REM Controller (REMc) role is Active or Stby.
+          success:
+            criteria:
+               expr: '${INVALIDCARDSTATE == "" && INVALIDREMCSTATE == ""}'
+            message: "All services are in valid in-service states and REM controllers have valid redundancy roles."
+          failure:
+            message: "One or more services are out of service, in an invalid state, or REM controller roles are incorrect/missing."
+
+  rollback_configuration:
+    name: "ROLLBACK_CONFIGURATION"
+    description: ""
+    when: '${ROLLBACK_REQUIRED == "true"}'
+    steps:
+    
+     - node: niam_sbc_server
+       command_description: "Get LCP management IP address and type"
+       send: |-
+         lcp_status | awk '$1=="MI" && $4=="ENABLED"{n=split($6,a,","); for(i=1;i<=n;i++) if(a[i]~/^[0-9]+\./ && a[i]!~/^169\.254\./){print a[i]" (IPv4)"; found=1; exit} for(i=1;i<=n;i++) if(a[i]~/:/){print a[i]" (IPv6)"; found=1; exit}} END{exit !found}'
+       use_exit_code: true
+       on_failure: stop
+       register:
+         - regex: '(?<LCPIP>[^\s]+)\s+\((?<LCPIPTYPE>IPv4|IPv6)\)'
+         - name: repo_server_ip
+           when: ${LCPIPTYPE == "IPv4"}
+           value: ${REPO_IP_V4}
+         - name: repo_server_ip
+           when: ${LCPIPTYPE == "IPv6"}
+           value: "[${REPO_IP_V6}]"
+          
+ 
+     - node: niam_sbc_server
+       command_description: "date"
+       send: 'date +%Y-%m-%d_%H-%M-%S'
+       on_failure: stop
+       use_exit_code: true
+       register:
+         - regex: '(?<DATE>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})'
+         
+     - node: niam_sbc_server
+       command_description: "Take full signaling-plane network configuration xml (root)"
+       send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml'
+       on_failure: continue
+       use_exit_code: true
+       register:
+         - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+         - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+       validation:
+         enabled: true
+         description: "Verify signaling-plane rollback backup xml created."
+         success:
+           criteria:
+             expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+           message: "NETCONF executed successfully on ${NODE_NAME}"
+           vars:
+             NETCONF_ROOT_OK: "true"
+         warning:
+           message: "root could not run netconfprov (or command failed); retrying with netconfcli user."
+           vars:
+             NETCONF_ROOT_OK: "false"
+             USER: 'netconfcli'
+
+     - node: niam_sbc_server
+       command_description: "Take full signaling-plane network configuration xml (netconfcli fallback)"
+       when: '${NETCONF_ROOT_OK == "false"}'
+       var_meta:
+        NETCONF_ROOT_OK: "NETCONF command ran with root user"
+       send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user netconfcli --pemfile /var/webui/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml'
+       on_failure: stop
+       use_exit_code: true
+       register:
+         - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+       validation:
+         enabled: true
+         description: "Verify signaling-plane rollback backup xml created via netconfcli."
+         success:
+           criteria:
+             expr: '${ERRORMSG == ""}'
+           message: "NETCONF executed successfully via netconfcli on ${NODE_NAME}"
+         failure:
+           message: "NETCONF execution failed with netconfcli on ${NODE_NAME}"
+          
+           
+     - node: niam_sbc_server
+       command_description: "Finding Checksum for the backup file "
+       send: "sha256sum /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml | awk '{print $1}'"
+       use_exit_code: true
+       on_failure: stop
+       timeout_sec: 300
+       register:
+         - regex: '(?m)^(?<ROLLBACKNODECHECKSUM>[a-fA-F0-9]{64})$'
+       
+
+     - node: niam_sbc_server
+       command_description: "SFTP upload from ${NODE_NAME} to repository server."
+       send: >-
+         printf "put /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+       expect_reply:
+        - expect: 'password:'
+          reply: 'admin'
+          timeout_sec: 300        
+       use_exit_code: true
+       retries: 5
+       retry_delay_sec: 15
+       retry_on:
+        - non_zero_exit
+        - regex_miss
+        - timeout
+       register:
+          - regex: '(?<FILECOPY>100%)'
+       validation:
+        enabled: true
+        description: "Verifying  XML file is transferred successfully from SBC Node to Repository Server."
+        success:
+          criteria:
+            expr: '${FILECOPY != ""}'
+          message: "Successfully uploaded backup file to the repository server."
+        warning:
+            message: "Failed to upload backup file to the repository server."   
+         
+     - node: repo_server
+       command_description: "Finding and Comparing Checksum for Uploaded File"
+       send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+       prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+       on_failure: continue
+       on_failure_message: "If all retries are exhausted then execution will be stopped."
+       timeout_sec: 120
+       register:
+         - regex: '(?<REPOCHECKSUM>[a-fA-F0-9]+)'
+       validation:
+         enabled: true
+         description: "Checksum of uploaded file matches the checksum of the original generated XML file."
+         success:
+           criteria:
+             expr: '${ROLLBACKNODECHECKSUM == REPOCHECKSUM}'
+           message: "File integrity verified. Checksums match."
+           vars:
+             CHECKSUM_STATUS: "SUCCESS"
+         warning:
+           message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+           vars:
+             CHECKSUM_STATUS: "FAILED"
+             
+     - type: loop
+       command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+       for_each: "${LOOP_RETRY}"
+       item_var: ATTEMPT
+       when: '${CHECKSUM_STATUS != "SUCCESS"}'
+       break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+       hide_when_skipped: true
+       steps:
+         - node: niam_sbc_server
+           command_description: "Attempt ${ATTEMPT} - re-upload rollback signaling to repo"
+           send: >-
+            printf "put /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+           on_failure: continue
+           expect_reply:
+             - expect: 'password:'
+               reply: 'admin'
+               timeout_sec: 300
+           use_exit_code: true
+           retries: 5
+           retry_delay_sec: 15
+           retry_on:
+            - non_zero_exit
+            - regex_miss
+            - timeout
+           register:
+              - regex: '(?<FILECOPY>100%)'
+           validation:
+            enabled: true
+            description: "Verifying  XML file is transferred successfully from SBC Node to Repository Server."
+            success:
+              criteria:
+                expr: '${FILECOPY != ""}'
+              message: "Successfully uploaded backup file to the repository server."
+            warning:
+                message: "Failed to upload backup file to the repository server."
+
+         - node: repo_server
+           command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+           send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+           prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+           on_failure: continue
+           timeout_sec: 300
+           register:
+             - regex: '(?<REPOCHECKSUM>[a-fA-F0-9]+)'
+           validation:
+             enabled: true
+             description: "Compare checksum on retry attempt ${ATTEMPT}"
+             success:
+               criteria:
+                 expr: '${ROLLBACKNODECHECKSUM == REPOCHECKSUM}'
+               message: "CheckSum is same."
+               vars:
+                 CHECKSUM_STATUS: "SUCCESS"
+             warning:
+               message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+               vars:
+                 CHECKSUM_STATUS: "FAILED"
+
+     - node: locals
+       command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+       send: "echo checksum-guard"
+       when: '${CHECKSUM_STATUS != "SUCCESS"}'
+       hide_when_skipped: true
+       on_failure: stop
+       validation:
+         enabled: true
+         description: "Runs only when checksum did not match after all retries; always fails to abort."
+         success:
+           criteria:
+             expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+           message: "checksum matched"
+         failure:
+           message: "Checksum did not match after all retry attempts - aborting."
+              
+           
+    #  - node: repo_server_sftp
+    #    sftp:
+    #     operation: download
+    #     local_path: "${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml"  #om path
+    #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml"   #repo path
+    #     overwrite: true              
+    #     create_dirs: true 
+    #    command_description: "SFTP upload Generated XML from Repo to Local" 
+
+
+     - node: locals
+       command_description: "Finding and Comparing Checksum for Uploaded File"
+       send: "sha256sum ${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+       on_failure: continue
+       timeout_sec: 120
+       on_failure_message: "If all retries are exhausted then execution will be stopped."
+       register:
+         - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+       validation:
+         enabled: true
+         description: "Checksum of uploaded file matches the checksum of the original generated XML file."
+         success:
+           criteria:
+             expr: '${REPOCHECKSUM == LOCALCHECKSUM}'
+           message: "File integrity verified. Checksums match."
+           vars:
+             CHECKSUM_STATUS: "SUCCESS"
+         warning:
+           message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+           vars:
+             CHECKSUM_STATUS: "FAILED"
+
+     - type: loop
+       command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+       for_each: "${LOOP_RETRY}"
+       item_var: ATTEMPT
+       when: '${CHECKSUM_STATUS != "SUCCESS"}'
+       break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+       hide_when_skipped: true
+       steps:
+        #  - node: repo_server_sftp
+        #    command_description: "Attempt ${ATTEMPT} - re-download rollback signaling from repo to locals"
+        #    sftp:
+        #      operation: download
+        #      local_path: "${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml"
+        #      remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml"
+        #      overwrite: true
+        #      create_dirs: true
+         - node: locals
+           command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+           send: "sha256sum ${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+           on_failure: continue
+           timeout_sec: 120
+           register:
+             - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+           validation:
+             enabled: true
+             description: "Compare checksum on retry attempt ${ATTEMPT}"
+             success:
+               criteria:
+                 expr: '${REPOCHECKSUM == LOCALCHECKSUM}'
+               message: "CheckSum is same."
+               vars:
+                 CHECKSUM_STATUS: "SUCCESS"
+             warning:
+               message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+               vars:
+                 CHECKSUM_STATUS: "FAILED"
+                 
+     - node: locals
+       command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+       send: "echo checksum-guard"
+       when: '${CHECKSUM_STATUS != "SUCCESS"}'
+       hide_when_skipped: true
+       on_failure: stop
+       validation:
+         enabled: true
+         description: "Runs only when checksum did not match after all retries; always fails to abort."
+         success:
+           criteria:
+             expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+           message: "checksum matched"
+         failure:
+           message: "Checksum did not match after all retry attempts - aborting."
+           
+     - type: loop
+       for_each: "${configSequences}"
+       item_var: config_seq_row
+       max_iterations: 50
+       reverse_order: true
+       skip_when: '${EXECUTED_TABLES == "" && ROLLBACK_ONLY != "true"}'
+       var_meta:
+          configSequences: "List of config sequences from ciq-processor JSON for current node"
+       steps:
+         - type: loop
+           for_each: "${config_seq_row.tables}"
+           item_var: table_row
+           reverse_order: true
+           max_iterations: 50
+           steps:
+
+              - node: locals
+                command_description: "Determine rollback scope for ${table_row.table}"
+                send: "echo rollback-scope-check"
+                logs: false
+                hide_when_skipped: true
+                register:
+                   - name: TABLE_ROLLBACK_APPLICABLE
+                     value: "false"
+                   - name: TABLE_ROLLBACK_APPLICABLE
+                     when: '${ROLLBACK_ONLY == "true" || EXECUTED_TABLES contains table_row.table}'
+                     value: "true"
+                   - name: CHECKSUM_STATUS
+                     value: "SUCCESS"
+
+              - node: locals
+                command_description: "validate and generate network configuration xml from CIQ data according to table"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true"}'
+                send: >-
+                 python ${ROLLBACK_PYTHON_SCRIPT_PATH}/netconf_generate_rollback_xml.py --json "${INPUT_JSON_FILE_NAME}" --node ${NODE_NAME} --xmlns "${xmlns}" --primary-keys "${primary_keys}" --base "${LOCAL_PATH}/Signaling_Activity.xml" --current "${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml" --output ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml --table ${table_row.table} --group ${config_seq_row.configSeq}
+                on_failure: continue
+                register:
+                  - regex: '(?<XMLGENSTATUS>SUCCESS)'
+                  - regex: '(?<PARTIAL>PARTIAL ROLLBACK XML GENERATED)'
+                validation:
+                  enabled: true
+                  description: "verify generate xml is completed successfully"
+                  success:
+                    criteria:
+                      expr: '${XMLGENSTATUS == "SUCCESS" || PARTIAL != ""}'
+                    message: "verify generate xml is successfully ${PARTIAL}"
+                    vars:
+                      ROLLBACK_EXECUTED_TABLES: "${ROLLBACK_EXECUTED_TABLES}${table_row.table}, "
+                  warning:
+                    message: "verify generate xml is not successfully"
+
+         - type: loop
+           for_each: "${config_seq_row.tables}"
+           item_var: table_row
+           reverse_order: true
+           max_iterations: 50
+           steps:
+
+              - node: locals
+                command_description: "Determine rollback scope for ${table_row.table}"
+                send: "echo rollback-scope-check"
+                logs: false
+                hide_when_skipped: true
+                register:
+                   - name: TABLE_ROLLBACK_APPLICABLE
+                     value: "false"
+                   - name: TABLE_ROLLBACK_APPLICABLE
+                     when: '${ROLLBACK_ONLY == "true" || ROLLBACK_EXECUTED_TABLES contains table_row.table}'
+                     value: "true"
+                   - name: CHECKSUM_STATUS
+                     value: "SUCCESS"
+                     
+                     
+              - node: niam_sbc_server
+                command_description: "Take full table configuration xml for ${table_row.table} before rollback execution"
+                send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --table ${table_row.table} --read > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Precheck.xml'
+                on_failure: stop
+                use_exit_code: true
+                register:
+                  - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify ${table_row.table} completes successfully and XML file is created."
+                  success:
+                    criteria:
+                      expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+                    message: "${table_row.table}.xml is created successfully."
+                  failure:
+                    message: "Failed to apply NETCONF configuration changes with netconfcli."
+                    vars:
+                      ROLLBACK_REQUIRED: 'true' 
+
+              - node: niam_sbc_server
+                command_description: "Read configuration xml content for ${table_row.table} for prevalidation"
+                send: "cat /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Precheck.xml; echo"
+                use_exit_code: true
+                on_failure: stop
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "capture configuration xml content for ${table_row.table}"
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "capture configuration xml content successfully"
+                  failure:
+                    message: "Failed to capture configuration xml content"
+                    vars:
+                      ROLLBACK_REQUIRED: "true"
+
+              - node: locals
+                command_description: "creating network configuration xml for ${table_row.table} on locals"
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Precheck.xml && echo WRITE_OK
+                on_failure: stop
+                timeout_sec: 1200
+                validation:
+                  enabled: true
+                  description: "creating network configuration xml for ${table_row.table} on locals."
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Fail to write table network configuration xml created for ${table_row.table}"
+                    vars:
+                      ROLLBACK_REQUIRED: 'true'                       
+                     
+              - node: locals
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml && echo xml_valid'
+                on_failure: stop
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+
+              - node: locals
+                command_description: "Read generate rollback network configuration xml from CIQ data for ${table_row.table}"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true"}'
+                send: "cat ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml; echo"
+                on_failure: stop
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "generate rollback network configuration xml content captured from locals."
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "content captured from node."
+                  failure:
+                    message: "Failed to captured the content from locals."
+                    
+
+              - node: niam_sbc_server
+                command_description: "creating rollback network configuration xml for ${table_row.table} on node"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true"}'
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml && echo WRITE_OK
+                use_exit_code: true
+                timeout_sec: 1200
+                on_failure: stop
+                validation:
+                  enabled: true
+                  description: "creating rollback network configuration xml for ${table_row.table} on node"
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Failed to write table network configuration xml for ${table_row.table}"
+                    
+              - node: niam_sbc_server
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml && echo xml_valid'
+                on_failure: stop
+                use_exit_code: true
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+
+              - node: niam_sbc_server
+                command_description: "Execute NETCONF XML on SBC - ${table_row.table} (root)"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true"}'
+                send: "/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --onerror abort /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback.xml"
+                on_failure: stop
+                use_exit_code: true
+                register:
+                  - regex: '(?<NETCONFABORTED>provision is aborted.*)'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify NETCONF execution succeeded for ${table_row.table}"
+                  success:
+                    criteria:
+                      expr: '${NETCONFABORTED == "" && ROOTNOTALLOWED == ""}'
+                    message: "NETCONF executed successfully: ${table_row.table} on ${NODE_NAME}"
+                    vars:
+                      NETCONF_ROOT_OK: "true"
+                  failure:
+                    message: "Failed to apply NETCONF configuration changes with netconfcli."
+                    vars:
+                      NETCONF_ROOT_OK: "false"
+
+              - node: niam_sbc_server
+                command_description: "Take full table configuration xml for ${table_row.table} (root)"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true"}'
+                send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --table ${table_row.table} --read > /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml'
+                on_failure: continue
+                use_exit_code: true
+                register:
+                  - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+                  - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+                validation:
+                  enabled: true
+                  description: "Verify ${table_row.table} completes successfully and XML file is created."
+                  success:
+                    criteria:
+                      expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+                    message: "${table_row.table}.xml is created successfully."
+                    vars:
+                      NETCONF_ROOT_OK: "true"
+                      ROLLBACK_POSTCHECK: "true"
+                  failure:
+                    message: "${table_row.table}.xml is not created successfully with netconfcli."
+                    vars:
+                      ROLLBACK_POSTCHECK: "false"
+                   
+              - node: niam_sbc_server
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true" && ROLLBACK_POSTCHECK != "false"}'
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml && echo xml_valid'
+                on_failure: continue
+                use_exit_code: true
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_POSTCHECK: "false"
+
+              - node: niam_sbc_server
+                command_description: "Read configuration xml content for ${table_row.table} for rollback postcheck"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true" && ROLLBACK_POSTCHECK != "false"}'
+                send: "cat /storage/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml; echo"
+                use_exit_code: true
+                on_failure: continue
+                register:
+                  - regex: '(?s)(?<SIGNALINGXML><config[\s\S]*?</config>)'
+                validation:
+                  enabled: true
+                  description: "capture configuration xml content for ${table_row.table}"
+                  success:
+                    criteria:
+                      expr: '${SIGNALINGXML != ""}'
+                    message: "capture configuration xml content successfully"
+                  failure:
+                    message: "Failed to capture configuration xml content"
+                    vars:
+                      ROLLBACK_POSTCHECK: "false"
+
+              - node: locals
+                command_description: "creating network configuration xml for ${table_row.table} on locals"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true" && ROLLBACK_POSTCHECK != "false"}'
+                send: echo '${base64:SIGNALINGXML}' | base64 -d > ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml && echo WRITE_OK
+                on_failure: continue
+                timeout_sec: 1200
+                validation:
+                  enabled: true
+                  description: "creating network configuration xml for ${table_row.table} on locals."
+                  success:
+                    criteria:
+                      regex: 'WRITE_OK'
+                    message: "table network configuration xml created for ${table_row.table}"
+                  failure:
+                    message: "Fail to write table network configuration xml created for ${table_row.table}"
+                    vars:
+                      ROLLBACK_POSTCHECK: "false"
+                      
+              - node: locals
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true" && ROLLBACK_POSTCHECK != "false"}'
+                command_description: "validate network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                send: 'xmllint --noout ${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml && echo xml_valid'
+                on_failure: continue
+                validation:
+                  enabled: true
+                  description: "verify network configuration XML generation to ensure data integrity and prevent the creation of invalid or inconsistent XML."
+                  success:
+                    criteria:
+                      regex: 'xml_valid'
+                    message: "data is consistent"
+                  failure:
+                    message: "data is not consistent"
+                    vars:
+                      ROLLBACK_POSTCHECK: "false"
+
+              - node: locals
+                command_description: "verify all the changes"
+                when: '${TABLE_ROLLBACK_APPLICABLE == "true" && ROLLBACK_POSTCHECK != "false"}'
+                send: >-
+                   python ${ROLLBACK_PYTHON_SCRIPT_PATH}/netconf_generate_rollback_xml.py --json "${INPUT_JSON_FILE_NAME}" --node ${NODE_NAME} --xmlns "${xmlns}" --primary-keys "${primary_keys}" --current "${LOCAL_PATH}/${table_row.table}_${config_seq_row.configSeq}_${DATE}_Rollback_Postcheck.xml" --table ${table_row.table} --postcheck --group ${config_seq_row.configSeq}
+                on_failure: continue
+                register:
+                   - regex: '(?<POSTCHECKSTATUS>POSTCHECK PASSED)'
+                validation:
+                  enabled: true
+                  description: "verify all changes has been reverted"
+                  success:
+                    criteria:
+                       expr: '${POSTCHECKSTATUS == "POSTCHECK PASSED"}'
+                    message: "changes are reverted"
+                  failure:
+                    message: "changes are not reverted"
+                    
+                    
+                    
+         - node: niam_sbc_server
+           command_description: "date"
+           send: 'date +%Y-%m-%d_%H-%M-%S'
+           on_failure: stop
+           use_exit_code: true
+           register:
+             - regex: '(?<DATE>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})'
+             
+         - node: niam_sbc_server
+           command_description: "Take full signaling-plane network configuration xml (root)"
+           send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user ${USER} --pemfile /root/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml'
+           on_failure: continue
+           use_exit_code: true
+           register:
+             - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+             - regex: '(?<ROOTNOTALLOWED>root user is not allowed)'
+           validation:
+             enabled: true
+             description: "Verify signaling-plane rollback backup xml created."
+             success:
+               criteria:
+                 expr: '${ERRORMSG == "" && ROOTNOTALLOWED == ""}'
+               message: "NETCONF executed successfully on ${NODE_NAME}"
+               vars:
+                 NETCONF_ROOT_OK: "true"
+             warning:
+               message: "root could not run netconfprov (or command failed); retrying with netconfcli user."
+               vars:
+                 NETCONF_ROOT_OK: "false"
+                 USER: 'netconfcli'
+         
+         - node: niam_sbc_server
+           command_description: "Take full signaling-plane network configuration xml (netconfcli fallback)"
+           when: '${NETCONF_ROOT_OK == "false"}'
+           var_meta:
+            NETCONF_ROOT_OK: "NETCONF command ran with root user"
+           send: '/opt/sbc/CurrRel/scripts/netconfprov/netconfprov --plane signaling --user netconfcli --pemfile /var/webui/.ssh/id_rsa --readall > /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml'
+           on_failure: stop
+           use_exit_code: true
+           register:
+             - regex: '(?<ERRORMSG>cannot create \[No such file or directory\])'
+           validation:
+             enabled: true
+             description: "Verify signaling-plane rollback backup xml created via netconfcli."
+             success:
+               criteria:
+                 expr: '${ERRORMSG == ""}'
+               message: "NETCONF executed successfully via netconfcli on ${NODE_NAME}"
+             failure:
+               message: "NETCONF execution failed with netconfcli on ${NODE_NAME}"
+              
+               
+         - node: niam_sbc_server
+           command_description: "Finding Checksum for the backup file "
+           send: "sha256sum /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml | awk '{print $1}'"
+           use_exit_code: true
+           on_failure: stop
+           timeout_sec: 300
+           register:
+             - regex: '(?m)^(?<ROLLBACKNODECHECKSUM>[a-fA-F0-9]{64})$'
+           
+         
+         - node: niam_sbc_server
+           command_description: "SFTP upload from ${NODE_NAME} to repository server."
+           send: >-
+             printf "put /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+           expect_reply:
+            - expect: 'password:'
+              reply: 'admin'
+              timeout_sec: 300        
+           use_exit_code: true
+           retries: 5
+           retry_delay_sec: 15
+           retry_on:
+            - non_zero_exit
+            - regex_miss
+            - timeout
+           register:
+              - regex: '(?<FILECOPY>100%)'
+           validation:
+            enabled: true
+            description: "Verifying  XML file is transferred successfully from SBC Node to Repository Server."
+            success:
+              criteria:
+                expr: '${FILECOPY != ""}'
+              message: "Successfully uploaded backup file to the repository server."
+            warning:
+                message: "Failed to upload backup file to the repository server."   
+             
+         - node: repo_server
+           command_description: "Finding and Comparing Checksum for Uploaded File"
+           send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+           prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+           on_failure: continue
+           on_failure_message: "If all retries are exhausted then execution will be stopped."
+           timeout_sec: 120
+           register:
+             - regex: '(?<REPOCHECKSUM>[a-fA-F0-9]+)'
+           validation:
+             enabled: true
+             description: "Checksum of uploaded file matches the checksum of the original generated XML file."
+             success:
+               criteria:
+                 expr: '${ROLLBACKNODECHECKSUM == REPOCHECKSUM}'
+               message: "File integrity verified. Checksums match."
+               vars:
+                 CHECKSUM_STATUS: "SUCCESS"
+             warning:
+               message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+               vars:
+                 CHECKSUM_STATUS: "FAILED"
+                 
+         - type: loop
+           command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+           for_each: "${LOOP_RETRY}"
+           item_var: ATTEMPT
+           when: '${CHECKSUM_STATUS != "SUCCESS"}'
+           break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+           hide_when_skipped: true
+           steps:
+             - node: niam_sbc_server
+               command_description: "Attempt ${ATTEMPT} - re-upload rollback signaling to repo"
+               send: >-
+                printf "put /storage/Signaling_${NODE_NAME}_${DATE}_Rollback.xml ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml\nbye\n" | sftp -o StrictHostKeyChecking=no admin@${repo_server_ip}
+               on_failure: continue
+               expect_reply:
+                 - expect: 'password:'
+                   reply: 'admin'
+                   timeout_sec: 300
+               use_exit_code: true
+               retries: 5
+               retry_delay_sec: 15
+               retry_on:
+                - non_zero_exit
+                - regex_miss
+                - timeout
+               register:
+                  - regex: '(?<FILECOPY>100%)'
+               validation:
+                enabled: true
+                description: "Verifying  XML file is transferred successfully from SBC Node to Repository Server."
+                success:
+                  criteria:
+                    expr: '${FILECOPY != ""}'
+                  message: "Successfully uploaded backup file to the repository server."
+                warning:
+                    message: "Failed to upload backup file to the repository server."
+         
+             - node: repo_server
+               command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+               send: "sha256sum ${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+               prompt_regex: '(?m)^\s*[mahajan@sim ~]\s*$'
+               on_failure: continue
+               timeout_sec: 300
+               register:
+                 - regex: '(?<REPOCHECKSUM>[a-fA-F0-9]+)'
+               validation:
+                 enabled: true
+                 description: "Compare checksum on retry attempt ${ATTEMPT}"
+                 success:
+                   criteria:
+                     expr: '${ROLLBACKNODECHECKSUM == REPOCHECKSUM}'
+                   message: "CheckSum is same."
+                   vars:
+                     CHECKSUM_STATUS: "SUCCESS"
+                 warning:
+                   message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+                   vars:
+                     CHECKSUM_STATUS: "FAILED"
+         
+         - node: locals
+           command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+           send: "echo checksum-guard"
+           when: '${CHECKSUM_STATUS != "SUCCESS"}'
+           hide_when_skipped: true
+           on_failure: stop
+           validation:
+             enabled: true
+             description: "Runs only when checksum did not match after all retries; always fails to abort."
+             success:
+               criteria:
+                 expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+               message: "checksum matched"
+             failure:
+               message: "Checksum did not match after all retry attempts - aborting."
+                  
+               
+        #  - node: repo_server_sftp
+        #    sftp:
+        #     operation: download
+        #     local_path: "${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml"  #om path
+        #     remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml"   #repo path
+        #     overwrite: true              
+        #     create_dirs: true 
+        #    command_description: "SFTP upload Generated XML from Repo to Local" 
+         
+         
+         - node: locals
+           command_description: "Finding and Comparing Checksum for Uploaded File"
+           send: "sha256sum ${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+           on_failure: continue
+           timeout_sec: 120
+           on_failure_message: "If all retries are exhausted then execution will be stopped."
+           register:
+             - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+           validation:
+             enabled: true
+             description: "Checksum of uploaded file matches the checksum of the original generated XML file."
+             success:
+               criteria:
+                 expr: '${REPOCHECKSUM == LOCALCHECKSUM}'
+               message: "File integrity verified. Checksums match."
+               vars:
+                 CHECKSUM_STATUS: "SUCCESS"
+             warning:
+               message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+               vars:
+                 CHECKSUM_STATUS: "FAILED"
+         
+         - type: loop
+           command_description: "Retry transfer + checksum up to ${RETRY_COUNT} times until checksum matches"
+           for_each: "${LOOP_RETRY}"
+           item_var: ATTEMPT
+           when: '${CHECKSUM_STATUS != "SUCCESS"}'
+           break_when: '${CHECKSUM_STATUS == "SUCCESS"}'
+           hide_when_skipped: true
+           steps:
+            #  - node: repo_server_sftp
+            #    command_description: "Attempt ${ATTEMPT} - re-download rollback signaling from repo to locals"
+            #    sftp:
+            #      operation: download
+            #      local_path: "${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml"
+            #      remote_path: "${BACK_UP_LOCATION_REPO}/Signaling_${DATE}_Rollback.xml"
+            #      overwrite: true
+            #      create_dirs: true
+             - node: locals
+               command_description: "Attempt ${ATTEMPT} - re-verify checksum"
+               send: "sha256sum ${LOCAL_PATH}/Signaling_${DATE}_Rollback.xml | awk '{print $1}'"
+               on_failure: continue
+               timeout_sec: 120
+               register:
+                 - regex: '(?<LOCALCHECKSUM>[a-fA-F0-9]+)'
+               validation:
+                 enabled: true
+                 description: "Compare checksum on retry attempt ${ATTEMPT}"
+                 success:
+                   criteria:
+                     expr: '${REPOCHECKSUM == LOCALCHECKSUM}'
+                   message: "CheckSum is same."
+                   vars:
+                     CHECKSUM_STATUS: "SUCCESS"
+                 warning:
+                   message: "Checksum mismatch detected. Retrying file transfer and checksum validation up to ${RETRY_COUNT} times."
+                   vars:
+                     CHECKSUM_STATUS: "FAILED"
+                     
+         - node: locals
+           command_description: "Abort if checksum still mismatched after ${RETRY_COUNT} retries"
+           send: "echo checksum-guard"
+           when: '${CHECKSUM_STATUS != "SUCCESS"}'
+           hide_when_skipped: true
+           on_failure: stop
+           validation:
+             enabled: true
+             description: "Runs only when checksum did not match after all retries; always fails to abort."
+             success:
+               criteria:
+                 expr: '${CHECKSUM_STATUS == "SUCCESS"}'
+               message: "checksum matched"
+             failure:
+               message: "Checksum did not match after all retry attempts - aborting."

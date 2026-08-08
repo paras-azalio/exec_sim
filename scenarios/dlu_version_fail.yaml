@@ -1,0 +1,20 @@
+# DLU "VersionFail": the installed Device Library version equals the new CIQ
+# version, so the BACKUP version-check validation fails (on_failure: stop) and
+# the run aborts -- mirrors PHASE-2/VersionFail.
+#
+# The version grep runs on the niam DPA node (remote), so the simulator fully
+# controls it.
+
+users:
+  a1tuj88u: sbc
+  installer: repo
+  admin: repo
+
+rules:
+  # Return the SAME version the CIQ expects (DLU229) -> "is not same as New DLU
+  # Version" check fails.
+  - match: 'Device Library file version:'
+    profile: any
+    stdout: |
+      DPA19.11SP1_DLU229
+    exit: 0

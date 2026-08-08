@@ -1,0 +1,118 @@
+version: 1.2
+name: sim-smoke-remote-only
+# All-remote workflow (niam + repo) so the REAL engine can run it end-to-end
+# against the simulator on this Windows box (no `local` steps, which would need
+# a POSIX shell). Nodes point at the simulator on 127.0.0.1:2222; the sim picks
+# the profile by username (a1tuj88u -> sbc, installer -> repo).
+globals:
+  vars:
+    REPO_IP: "${REPO_IP}"
+  defaults:
+    timeout_sec: 30
+    interaction_timeout_sec: 15
+    on_failure: stop
+
+nodes:
+  niam_sbc_server:
+    type: remote
+    plugin: ssh
+    prompt_regex: '(?s)<[^>]+>[^\n]*:\s*\n#\s*$'
+    ssh:
+      host: "127.0.0.1"
+      port: "2222"
+      user: "a1tuj88u"
+      auth:
+        password: "x"
+      ne_id: "${niamID}"
+      strict_host_key_checking: false
+    interactive_prompts:
+      - expect: 'Enter return to acknowledge message of the day:'
+        reply: ''
+      - expect: 'Command line editor\? \(default = vi\):'
+        reply: ''
+
+  repo_server:
+    type: remote
+    plugin: ssh
+    prompt_regex: '(?m)[#$]\s*$'
+    ssh:
+      host: "${REPO_IP}"
+      port: "2222"
+      user: "${REPO_USER}"
+      auth:
+        password: "${REPO_PASSWORD}"
+      strict_host_key_checking: false
+
+phases:
+  preHealth:
+    name: "PRE_HEALTH_AND_BACKUP_READ"
+    steps:
+      - node: niam_sbc_server
+        command_description: "Verify alarm subsystem health"
+        send: 'alarm_check --action health'
+        prompt_regex: '(?s)<[^>]+>[^\n]*:\s*\n#\s*$'
+        on_failure: continue
+        register:
+          - regex: '(?<ALARMHEALTHSTATUS>Alarm health check passed)'
+        validation:
+          enabled: true
+          success:
+            criteria:
+              expr: '${ALARMHEALTHSTATUS != ""}'
+            message: "Alarm health check passes."
+          failure:
+            message: "Alarm health check failed."
+
+      - node: niam_sbc_server
+        command_description: "Display LCP host and service member status"
+        send: 'lcp_status'
+        prompt_regex: '(?s)<[^>]+>[^\n]*:\s*\n#\s*$'
+        on_failure: continue
+        register:
+          - regex: '(?<INVALIDSERVICE>\b(DISABLED|FAILED|LOCKED|OUTOFSERVICE|UNKNOWN)\b)'
+        validation:
+          enabled: true
+          success:
+            criteria:
+              expr: '${INVALIDSERVICE == ""}'
+            message: "All service members show valid states."
+          failure:
+            message: "One or more service members invalid."
+
+      - node: niam_sbc_server
+        command_description: "Display REM service and redundancy status"
+        send: 'rem_srv_state --action display --set all'
+        prompt_regex: '(?s)<[^>]+>[^\n]*:\s*\n#\s*$'
+        on_failure: continue
+        register:
+          - regex: '(?<INVALIDREMCSTATE>REMc is (?!Active\b|Stby\b)\S+)'
+        validation:
+          enabled: true
+          success:
+            criteria:
+              expr: '${INVALIDREMCSTATE == ""}'
+            message: "REM controllers have valid roles."
+          failure:
+            message: "REM controller roles invalid."
+
+      - node: repo_server
+        command_description: "Create backup directory on repository server"
+        send: "mkdir -p /repo-server/config/CR_AUTOMATION/SBC/${CHILD_REQ_ID}/${node}"
+        prompt_regex: '(?m)[#$]\s*$'
+        on_failure: continue
+
+      - node: niam_sbc_server
+        command_description: "Take signaling backup then read it back as base64 (the new content-copy read step)"
+        send: "base64 -w0 /storage/Signaling_${node}_${DATE}.xml; echo"
+        prompt_regex: '(?m)^#\s*$'
+        on_failure: stop
+        register:
+          - regex: '(?<SIGNALINGBASE>[A-Za-z0-9+/=]{16,})'
+        validation:
+          enabled: true
+          success:
+            criteria:
+              expr: '${SIGNALINGBASE != ""}'
+            message: "Signaling backup content captured from node as base64."
+          failure:
+            message: "Failed to read signaling backup content from node."

@@ -1,0 +1,21 @@
+# SBC checksum mismatch -> retry loop -> abort.
+# Corrupting the NODE-side checksum for the "Signaling" artifact makes
+# BACKUPNODECHECKSUM != BACKUPREPOCHECKSUM, so CHECKSUM_STATUS=FAILED, the
+# DPA-style LOOP_RETRY:[1,2] loop runs, and the `echo checksum-guard` step then
+# aborts the MOP (on_failure: stop).
+
+users:
+  a1tuj88u: sbc
+  installer: repo
+
+checksum:
+  force_mismatch:
+    - Signaling          # corrupt the signaling checksum on the node side only
+
+# To instead demonstrate "fail attempt 1, pass on retry", drop force_mismatch
+# and use an occurrence-scoped rule like this (1st sha256 corrupt, rest clean):
+# rules:
+#   - match: 'sha256sum .*Signaling'
+#     profile: sbc
+#     occurrences: [1]
+#     checksum_corrupt: true

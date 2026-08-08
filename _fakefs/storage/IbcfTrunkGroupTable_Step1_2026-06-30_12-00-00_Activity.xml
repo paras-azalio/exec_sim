@@ -1,0 +1,3 @@
+<config xmlns="http://nokia.com/yang/isbc-sig" key="IbcfTrunkGroupTable_Step1">
+  <clicr-sim>deterministic fake content for IbcfTrunkGroupTable_Step1</clicr-sim>
+</config>

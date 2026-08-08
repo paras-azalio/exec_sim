@@ -1,0 +1,245 @@
+CLI-CR simulator listening on 0.0.0.0:2222
+  fake repo FS : C:\Users\parmahaj\Documents\Projects\Nokia\clicr-simulator\_fakefs
+  scenario     : (built-in defaults)
+  user->profile: (default: a1tuj88u->sbc, installer/admin->repo)
+  Point your workflow nodes' ssh.host/port here (same port OK; profile by username).
+16:28:12 [conn] from ('127.0.0.1', 1491)
+Exception (server): Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2213, in _check_banner
+    buf = self.packetizer.readline(timeout)
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\packet.py", line 395, in readline
+    buf += self._read_timeout(timeout)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\packet.py", line 663, in _read_timeout
+    x = self.__socket.recv(128)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2029, in run
+    self._check_banner()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2217, in _check_banner
+    raise SSHException(
+        "Error reading SSH protocol banner" + str(e)
+    )
+paramiko.ssh_exception.SSHException: Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host
+
+16:28:12 [conn] SSH negotiation failed: Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host
+16:28:58 [conn] from ('127.0.0.1', 6313)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:28:59 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:28:59 [conn] from ('127.0.0.1', 6314)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6315)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6316)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6317)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6318)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6319)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+16:29:00 [conn] from ('127.0.0.1', 6320)
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:00 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:00 [conn] from ('127.0.0.1', 6321)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:01 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:29:01 [conn] from ('127.0.0.1', 6322)
+Exception (server): Incompatible ssh peer (no acceptable host key)
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2080, in run
+    self._handler_table[ptype](m)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2200, in _negotiate_keys
+    self._parse_kex_init(m)
+    ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2451, in _parse_kex_init
+    raise IncompatiblePeer(
+    ^^^^^^^^^^^^^^^^^^^^^^^
+        "Incompatible ssh peer (no acceptable host key)"
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # noqa
+    ^
+paramiko.ssh_exception.IncompatiblePeer: Incompatible ssh peer (no acceptable host key)
+
+16:29:01 [conn] SSH negotiation failed: Incompatible ssh peer (no acceptable host key)
+16:34:22 [conn] from ('127.0.0.1', 11341)
+Exception (server): Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2213, in _check_banner
+    buf = self.packetizer.readline(timeout)
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\packet.py", line 395, in readline
+    buf += self._read_timeout(timeout)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\packet.py", line 663, in _read_timeout
+    x = self.__socket.recv(128)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2029, in run
+    self._check_banner()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\parmahaj\AppData\Local\Programs\Python\Python314\Lib\site-packages\paramiko\transport.py", line 2217, in _check_banner
+    raise SSHException(
+        "Error reading SSH protocol banner" + str(e)
+    )
+paramiko.ssh_exception.SSHException: Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host
+
+16:34:22 [conn] SSH negotiation failed: Error reading SSH protocol banner[WinError 10054] An existing connection was forcibly closed by the remote host

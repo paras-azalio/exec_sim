@@ -1,0 +1,141 @@
+# =============================================================================
+# CLI-CR SIMULATOR — SCENARIO FILE  (annotated reference)
+# =============================================================================
+# A scenario file tells the simulator how to behave for one run. It is OPTIONAL:
+# with NO scenario (or an empty one) the built-in defaults already give a clean,
+# all-success end-to-end run with matching checksums.
+#
+# Load it with:
+#     python clicr_sim.py --port 2222 --scenario scenarios/_REFERENCE_annotated.yaml -v
+#
+# There are exactly FIVE top-level sections, all optional. Who parses what:
+#     defaults, checksum, rules   ->  command_engine.Scenario
+#     users, profiles             ->  clicr_sim.build_profiles
+# Anything you omit falls back to the documented default.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1) defaults — behaviour for commands that no rule and no built-in handler match
+# -----------------------------------------------------------------------------
+defaults:
+  shell_exit: 0            # exit code returned for UNKNOWN commands (the generic
+                           # fallback). 0 = treat unknown commands as success.
+                           # Set non-zero only if you want every unrecognised
+                           # command to look like it failed.
+
+
+# -----------------------------------------------------------------------------
+# 2) users — map an SSH login username to a node "profile"
+# -----------------------------------------------------------------------------
+# The simulator serves every node on ONE port and decides which "personality"
+# (prompt, login prompts, banner) to present based on the username the Java
+# engine logs in with. Left = the resolved username from your workflow YAML's
+# nodes.<id>.ssh.user ; Right = a profile name defined below (or built-in).
+users:
+  a1tuj88u: sbc            # SBC / DPA OAM node logs in as a1tuj88u -> "sbc" profile
+  installer: repo          # repository server logs in as installer -> "repo" profile
+  admin: repo              # (DLU repo sometimes uses 'admin')
+# Not listed? Default is "sbc", except installer/admin/repo/repouser -> "repo".
+# You can also override on the CLI:  --map someuser=sbc
+
+
+# -----------------------------------------------------------------------------
+# 3) profiles — OPTIONAL overrides of a profile's terminal behaviour
+# -----------------------------------------------------------------------------
+# You usually DON'T need this block — the built-in "sbc" and "repo" profiles
+# already use the real prompts. Override only for a different node family
+# (e.g. a DLU node whose prompt differs).
+profiles:
+
+  sbc:                                     # profile name (referenced from users:)
+    # Shell prompt bytes emitted after EVERY command. MUST satisfy that node's
+    # prompt_regex in the workflow YAML. "\n" splits the two prompt lines; note
+    # the trailing "# " (hash + space) on the second line.
+    prompt: "<LabP1-oam-a:root>/root:\n# "
+    # Login prompts emitted (IN ORDER) before the first shell prompt. The engine
+    # replies to each one (from the node's interactive_prompts). The text here
+    # must match each interactive_prompts[].expect pattern in the workflow YAML.
+    interactive:
+      - "Enter return to acknowledge message of the day:"
+      - "Command line editor? (default = vi):"
+    banner: ""                             # optional free text printed at login
+
+  repo:
+    prompt: "[installer@mano-repo-server ~]$ "   # matches repo prompt_regex (?m)[#$]\s*$
+    interactive: []                        # repo node has no login prompts
+    banner: ""
+
+
+# -----------------------------------------------------------------------------
+# 4) checksum — control the deterministic sha256sum engine
+# -----------------------------------------------------------------------------
+# By default `sha256sum <file>` returns a hash derived from the file's LOGICAL
+# name (directory, host token and timestamp stripped), so the SAME artifact
+# hashes identically on node, repo and local — every "==" comparison passes.
+#
+# List logical KEYS here to corrupt them on the NODE side only, forcing a
+# mismatch (this exercises the checksum retry loop and the abort guard).
+# Logical keys are the canonical base names, e.g.:
+#     Signaling   MGW01   MGW02   CRFTargetList   ServiceProfileTable   phones_229
+checksum:
+  force_mismatch: []        # e.g.  [Signaling]   -> node 'Signaling' hash != repo
+
+
+# -----------------------------------------------------------------------------
+# 5) rules — ordered command overrides (FIRST match wins)
+# -----------------------------------------------------------------------------
+# A rule fires when its `match` regex is found in the REAL command — the text
+# BEFORE the "; echo __CMD_DONE__:$?" sentinel the engine appends. Use rules to
+# inject a specific output or a failure. All fields except `match` are optional.
+rules:
+
+  # --- Example A: force a DLU version-check FAILURE --------------------------
+  - match: 'Device Library file version:'  # regex searched in the command
+    profile: any                           # any | sbc | repo | <profile-name>
+    stdout: |                              # text to emit (verbatim, LF-normalised)
+      DPA19.11SP1_DLU229
+    exit: 0
+    # Returns the SAME version the CIQ expects -> the "is not same as New DLU
+    # Version" validation fails -> on_failure: stop -> run aborts.
+
+  # --- Example B: make a netconfprov APPLY fail -> AUTO-ROLLBACK -------------
+  - match: 'netconfprov .*--onerror abort .*ServiceProfileTable'
+    profile: sbc                           # only when the sbc node runs it
+    stdout: |
+      The provisioning was started
+      ERROR: provisioning failed for ServiceProfileTable (rc=2)
+      NetConf Server is unlocked
+    # No "provision is OK : <table>" line -> success criteria misses -> failure
+    # branch -> ROLLBACK_REQUIRED=true -> rollback_configuration phase runs.
+
+  # --- Example C: TRANSIENT checksum mismatch (fail attempt 1, pass on retry) -
+  - match: 'sha256sum .*Signaling'         # the sha256sum for the Signaling file
+    profile: sbc                           # corrupt on the node side only
+    occurrences: [1]                       # apply ONLY the 1st time this matches
+    checksum_corrupt: true                 # return a deliberately wrong checksum
+    # 2nd+ matches fall through to the correct checksum, so the retry succeeds.
+
+  # --- Example D: explicit transfer transcript (sftp/scp + '100%') ----------
+  # (Usually unnecessary — transfers already emit password:/100% by default.)
+  - match: 'put .*Signaling.* \| sftp'
+    profile: sbc
+    transfer_100: true                     # force the banner + 'password:' + '100%'
+    exit: 0
+
+
+# -----------------------------------------------------------------------------
+# RULE FIELD REFERENCE (all optional except `match`)
+# -----------------------------------------------------------------------------
+#   match            : Python regex, searched (re.search) in the interpolated command.
+#   profile          : restrict the rule to one profile (default "any").
+#   stdout           : literal text to print. For sha256sum/transfer rules it is
+#                      mostly ignored except as trailing extra text.
+#   exit             : exit code, used only for "marker" steps (steps with no
+#                      prompt_regex, where the engine appended __CMD_DONE__:$?).
+#   occurrences      : list of 1-based match counts the rule applies to (default =
+#                      every time). Enables stateful fail-then-pass behaviour.
+#   checksum_corrupt : for a sha256sum command, return a wrong hash (force mismatch).
+#   transfer_100     : treat the command as an sftp/scp transfer (emit a
+#                      'password:' prompt then a '100%' progress line).
+# =============================================================================

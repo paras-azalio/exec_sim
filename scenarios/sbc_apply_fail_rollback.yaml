@@ -1,0 +1,20 @@
+# SBC auto-rollback: the netconfprov APPLY for one table fails (no
+# "provision is OK"), so the activity validation fails -> ROLLBACK_REQUIRED=true
+# -> the rollback_configuration phase runs. The apply runs on the niam node
+# (remote), so the simulator controls it end-to-end.
+
+users:
+  a1tuj88u: sbc
+  installer: repo
+
+rules:
+  # Make the apply of ServiceProfileTable fail: emit an error instead of the
+  # "provision is OK : <table>" / "NetConf Server is unlocked" success markers.
+  - match: 'netconfprov .*--onerror abort .*ServiceProfileTable'
+    profile: sbc
+    stdout: |
+      The provisioning was started
+      NetConf Server is locked
+      ERROR: provisioning failed for ServiceProfileTable (rc=2)
+      NetConf Server is unlocked
+    exit: 0

@@ -1,0 +1,3 @@
+# Minimal permissive validation-rules schema (no 'data' constraints -> accepts anything).
+version: "1.0"
+name: "sim-smoke-schema"

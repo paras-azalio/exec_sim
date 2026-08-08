@@ -1,0 +1,19 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "node": "SBC-2",
+        "niamID": "Nokia-SIM_OAM_sftp",
+        "REPO_IP": "127.0.0.1",
+        "REPO_USER": "installer",
+        "REPO_PASSWORD": "x",
+        "ORDER_NO": "42075",
+        "CHILD_REQ_ID": "42075",
+        "DATE": "2026-06-30_10-00-00",
+        "tableData": [
+          { "table_row": "CRFTargetList" }
+        ]
+      }
+    ]
+  }
+}

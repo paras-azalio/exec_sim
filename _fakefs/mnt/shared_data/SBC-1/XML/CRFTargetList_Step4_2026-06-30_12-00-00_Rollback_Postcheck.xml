@@ -1,0 +1,3 @@
+<config xmlns="http://nokia.com/yang/isbc-sig" key="CRFTargetList_Step4_Rollback">
+  <clicr-sim>deterministic fake content for CRFTargetList_Step4_Rollback</clicr-sim>
+</config>
