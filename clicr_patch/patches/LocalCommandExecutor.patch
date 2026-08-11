@@ -1,0 +1,62 @@
+diff --git a/src/main/java/cliautomation/exec/LocalCommandExecutor.java b/src/main/java/cliautomation/exec/LocalCommandExecutor.java
+index ad301a9..d30b0ee 100644
+--- a/src/main/java/cliautomation/exec/LocalCommandExecutor.java
++++ b/src/main/java/cliautomation/exec/LocalCommandExecutor.java
+@@ -31,8 +31,11 @@ class LocalCommandExecutor {
+ 
+         // scp/sftp write password prompts to /dev/tty — bypassing stdout/stderr entirely.
+         // Use JSch SFTP directly so password auth is handled in pure Java.
+-        if (hasExpect && !isWindows() && looksLikeScpCommand(command)) {
+-            return executeScpViaJsch(command, timeoutSec, expectReplyDefs);
++        // On Windows this is normally skipped, but an explicit POSIX local shell
++        // (-Dclicr.local.shell) means the caller wants POSIX semantics throughout.
++        if (hasExpect && looksLikeScpCommand(command)
++                && (!isWindows() || overrideLocalShell() != null)) {
++            return executeScpViaJsch(applyLocalPathMap(command), timeoutSec, expectReplyDefs);
+         }
+ 
+         ProcessBuilder pb;
+@@ -394,7 +397,43 @@ class LocalCommandExecutor {
+         return normalized.replaceAll("\\u001B\\[[;\\d]*[ -/]*[@-~]", "");
+     }
+ 
++    /**
++     * Optional POSIX shell for `node: local` steps, e.g.
++     * {@code -Dclicr.local.shell="C:\Program Files\Git\bin\bash.exe"}.
++     * Unset (the default) leaves platform behaviour exactly as before.
++     */
++    private static String overrideLocalShell() {
++        String sh = System.getProperty("clicr.local.shell");
++        return (sh == null || sh.trim().isEmpty()) ? null : sh.trim();
++    }
++
++    /**
++     * Optional literal path rewrite for `node: local` steps, e.g.
++     * {@code -Dclicr.local.pathmap=/mnt/shared_data=C:/clicr-sim/shared_data}.
++     * Only used together with {@link #overrideLocalShell()}; lets a developer
++     * host the OM server's shared directory somewhere writable. Multiple pairs
++     * may be separated by {@code ;}.
++     */
++    static String applyLocalPathMap(String command) {
++        String spec = System.getProperty("clicr.local.pathmap");
++        if (spec == null || spec.trim().isEmpty() || command == null) {
++            return command;
++        }
++        String out = command;
++        for (String pair : spec.split(";")) {
++            int eq = pair.indexOf('=');
++            if (eq > 0) {
++                out = out.replace(pair.substring(0, eq).trim(), pair.substring(eq + 1).trim());
++            }
++        }
++        return out;
++    }
++
+     private static String[] buildLocalShellCommand(String command) {
++        String sh = overrideLocalShell();
++        if (sh != null) {
++            return new String[]{sh, "-lc", applyLocalPathMap(command)};
++        }
+         if (isWindows()) {
+             return new String[]{"powershell", "-NoProfile", "-Command", command};
+         }

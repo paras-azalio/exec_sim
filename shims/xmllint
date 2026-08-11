@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Minimal xmllint stand-in for dev boxes without libxml2.
+#
+# The workflow calls:  xmllint --noout <file> && echo xml_valid
+# so all that matters is: parse the file, print nothing on success, exit non-zero
+# with a message on stderr when the XML is malformed. Python's expat parser gives
+# the same verdict for well-formedness.
+files=()
+for a in "$@"; do
+  case "$a" in
+    --noout|--nonet|--recover|-*) ;;   # accepted and ignored
+    *) files+=("$a") ;;
+  esac
+done
+
+for f in "${files[@]}"; do
+  # Windows python cannot resolve an MSYS /c/... path; normalise when possible.
+  case "$f" in
+    /*) command -v cygpath >/dev/null && f="$(cygpath -w "$f")" ;;
+  esac
+  python -c "
+import sys, xml.etree.ElementTree as ET
+try:
+    ET.parse(sys.argv[1])
+except FileNotFoundError:
+    sys.stderr.write('xmllint: %s: failed to load external entity\n' % sys.argv[1]); sys.exit(1)
+except ET.ParseError as e:
+    sys.stderr.write('%s:%s: parser error : %s\n' % (sys.argv[1], e.position[0], e)); sys.exit(1)
+" "$f" || exit 1
+done
+exit 0

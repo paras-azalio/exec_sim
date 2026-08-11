@@ -1,0 +1,46 @@
+diff --git a/src/main/java/ilink/nei/clicr/any/MopExecutionUtil.java b/src/main/java/ilink/nei/clicr/any/MopExecutionUtil.java
+index ff3361e..77ccd54 100644
+--- a/src/main/java/ilink/nei/clicr/any/MopExecutionUtil.java
++++ b/src/main/java/ilink/nei/clicr/any/MopExecutionUtil.java
+@@ -1,4 +1,4 @@
+-﻿package ilink.nei.clicr.any;
++package ilink.nei.clicr.any;
+ 
+ import java.io.File;
+ import java.nio.charset.StandardCharsets;
+@@ -1110,7 +1110,7 @@ public class MopExecutionUtil {
+ 		return result;
+ 	}
+ 
+-	private static String resolveNodeDetails(String jsonFile, String nodeName) {
++	static String resolveNodeDetails(String jsonFile, String nodeName) {
+ 		try {
+ 			Map<String, Object> payload = JsonSchemaSupport.readJson(new File(
+ 					jsonFile));
+@@ -1379,7 +1379,7 @@ public class MopExecutionUtil {
+ 		map.put(key, Integer.valueOf(old == null ? 1 : old.intValue() + 1));
+ 	}
+ 
+-	private static Map<String, Object> buildExecutionReport(String nodeName,
++	static Map<String, Object> buildExecutionReport(String nodeName,
+ 			ExecutionResult result) {
+ 		LinkedHashMap<String, Object> root = new LinkedHashMap<String, Object>();
+ 		LinkedHashMap<String, Object> metadata = new LinkedHashMap<String, Object>();
+@@ -1607,7 +1607,7 @@ public class MopExecutionUtil {
+ 	}
+ 
+ 	@SuppressWarnings("unchecked")
+-	private static String toJson(Object value) {
++	static String toJson(Object value) {
+ 		if (value == null) {
+ 			return "null";
+ 		}
+@@ -1697,7 +1697,7 @@ public class MopExecutionUtil {
+ 		return sb.toString();
+ 	}
+ 
+-	private static String writeExecutionReportFile(String outputDir,
++	static String writeExecutionReportFile(String outputDir,
+ 			String nodeType, String subActivity, String nodeName,
+ 			Map<String, Object> executionReport) throws Exception {
+ 		String safeNode = (nodeName == null || nodeName.trim().isEmpty()) ? "node"

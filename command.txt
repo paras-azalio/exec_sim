@@ -1,0 +1,159 @@
+===============================================================================
+ CLI-CR SSH SIMULATOR - RUN COMMANDS
+ SBC_33_LIC_LOADING_IN_SBC  (PRECHECK)
+===============================================================================
+
+PATHS
+  SIM      C:\Users\parmahaj\OneDrive - Nokia\Documents\Projects\Nokia\clicr-simulator
+  ENGINE   C:\Users\parmahaj\OneDrive - Nokia\Documents\Projects\Nokia\JAVA_NOKIA_CLICR_AUTOMATION
+  OUT      C:\Users\parmahaj\OneDrive - Nokia\Documents\UT Artifacts\License\precheck
+  RUN      <OUT>\run          generated inputs + per-run artefacts
+
+Run everything from Git Bash.
+
+
+-------------------------------------------------------------------------------
+0) ONE-TIME BUILD  (only after changing SimRunner.java)
+-------------------------------------------------------------------------------
+cd "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/clicr-simulator/clicr_patch"
+bash build.sh
+
+  The driver lives in the SIMULATOR, not in CLI-CR:
+    clicr_patch/java/ilink/nei/clicr/any/SimRunner.java
+    clicr_patch/classes/                     <- goes first on the classpath
+  The two opt-in engine changes are patches:
+    bash apply.sh     apply to a pristine CLI-CR checkout
+    bash revert.sh    put CLI-CR back to committed state
+
+
+-------------------------------------------------------------------------------
+1) PREPARE INPUTS  (regenerate after editing the workflow or the node XML)
+-------------------------------------------------------------------------------
+cd "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/clicr-simulator"
+python prep_sbc33_precheck.py \
+  "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/JAVA_NOKIA_CLICR_AUTOMATION/src/main/resources/templates/yaml/SBC_33_LIC_LOADING_IN_SBC_PRECHECK.yaml" \
+  "/c/Users/parmahaj/OneDrive - Nokia/Documents/UT Artifacts/License/precheck/Signaling_Activity_pre_logs.xml" \
+  "/c/Users/parmahaj/OneDrive - Nokia/Documents/UT Artifacts/License/precheck"
+
+  writes into <OUT>\run :
+    SBC_33_PRECHECK_sim.yaml   workflow copy, node ssh repointed at 127.0.0.1:22
+    scenario.yaml              simulator rules (scenario format)
+    answers.txt                simulator rules (flat text format)
+    answers.yaml               simulator rules (request+response in one file)
+    answers\*.xml              the reply bodies
+
+
+-------------------------------------------------------------------------------
+2) RUN THE WHOLE PRECHECK  (starts sim, runs engine, stops sim, collects output)
+-------------------------------------------------------------------------------
+cd "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/clicr-simulator"
+
+# using the flat text answers file
+RESPONSES=answers.txt  bash run_sbc33_precheck.sh SBC-1
+
+# using the single request/response yaml
+RESPONSES=answers.yaml bash run_sbc33_precheck.sh SBC-1
+
+# using the full scenario format (fault injection, occurrences, profiles)
+bash run_sbc33_precheck.sh SBC-1
+
+  Deliverables land in <OUT> :
+    LICENSE_PREREQUISITE_REPORT.html
+    XML\Precheck\*.xml
+    run\SBC_33_LIC_LOADING_IN_SBC_EXECUTION_REPORT_SBC-1.json
+    run\SBC_33_LIC_LOADING_IN_SBC_VARIABLES_SBC-1.json
+    run\SBC_33_LICENSE_LOADING_IN_SBC.updated.json
+    run\runner.log , run\simulator.log
+
+
+-------------------------------------------------------------------------------
+3) SIMULATOR ON ITS OWN  (one command + a response file, nothing else)
+-------------------------------------------------------------------------------
+cd "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/clicr-simulator"
+
+python clicr_sim.py --port 22 --responses "<OUT>/run/answers.txt"  -v
+python clicr_sim.py --port 22 --responses "<OUT>/run/answers.yaml" -v
+python clicr_sim.py --port 22 --scenario  "<OUT>/run/scenario.yaml" -v
+
+  --port 22 is required here: repo_server pins port 22 in the workflow.
+  Log in with any password.  Users: sbcadmin -> SBC profile, installer -> repo.
+
+  Quick manual poke:
+    ssh -p 22 sbcadmin@127.0.0.1
+    date +%Y-%m-%d_%H-%M-%S
+    cat /storage/CapacityLicenseKey_Step1_2026-08-11_21-30-00_Precheck.xml
+
+  Stop it:
+    powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" | Where-Object { $_.CommandLine -like '*clicr_sim.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+
+
+-------------------------------------------------------------------------------
+4) ENGINE ON ITS OWN  (simulator must already be listening)
+-------------------------------------------------------------------------------
+cd "/c/Users/parmahaj/OneDrive - Nokia/Documents/Projects/Nokia/JAVA_NOKIA_CLICR_AUTOMATION"
+export MSYS2_ARG_CONV_EXCL="*" MSYS_NO_PATHCONV=1
+
+java -Dclicr.local.shell="C:/Program Files/Git/bin/bash.exe" \
+     -Dclicr.local.pathmap="/mnt/shared_data=C:/clicr-sim/shared_data;/data/cloud-user/om/install/sas/bin/macro_server/java/CLICR/ANY/V1/script/python=C:/clicr-sim/pyscripts" \
+     -cp "../clicr-simulator/clicr_patch/classes;target/classes;target/lib/*" \
+     ilink.nei.clicr.any.SimRunner \
+     --template "<OUT>/run/SBC_33_PRECHECK_sim.yaml" \
+     --json     "C:/clicr-sim/ciq/SBC_33_LICENSE_LOADING_IN_SBC.json" \
+     --schema   "src/main/resources/templates/jsonTemplate/SBC_33_LIC_LOADING_IN_SBC_json-output.yaml" \
+     --node SBC-1 --cr CR1 --node-type SBC --sub-activity 33_LIC_LOADING_IN_SBC \
+     --out "<OUT>/run" --sim-port 22 \
+     --vars "CHILD_REQ_ID=40528;NODE_NAME=SBC-1;LICENSE_FILE_PATH=C:/clicr-sim/licenses;INPUT_JSON_FILE_NAME=C:/clicr-sim/ciq/SBC_33_LICENSE_LOADING_IN_SBC.json;ORDER_NO=CR-SBC33-40528"
+
+
+===============================================================================
+ RESPONSE FILE FORMATS
+===============================================================================
+
+A) FLAT TEXT   answers.txt        <command regex> => <reply | @file> | options
+-------------------------------------------------------------------------------
+date \+%Y-%m-%d_%H-%M-%S                          => 2026-08-11_21-30-00   | profile=sbc
+netconfprov .*--user root                         =>                       | profile=sbc, exit=1
+netconfprov .*--user netconfcli                   =>                       | profile=sbc, exit=0
+cat /storage/CapacityLicenseKey_.*_Precheck\.xml  => @answers/CapacityLicenseKey.xml | profile=sbc
+
+  @file        reply body read from that file (relative to the .txt)
+  options      exit=N , profile=sbc|repo|node1|node2|any , occurrences=1,2
+  #            comment line
+  first rule that matches the command wins
+
+
+B) SINGLE YAML   answers.yaml     request and response together
+-------------------------------------------------------------------------------
+profile: sbc
+users:
+  sbcadmin: sbc
+  installer: repo
+exchanges:
+  - request:  'date \+%Y-%m-%d_%H-%M-%S'
+    response: '2026-08-11_21-30-00'
+
+  - request:  'netconfprov .*--user root'
+    response: ''
+    exit: 1
+
+  - request:       'cat /storage/CapacityLicenseKey_.*_Precheck\.xml'
+    response_file: answers/CapacityLicenseKey.xml
+
+  request        regex matched against the command
+  response       inline reply   (response_file: path for a big/multi-line body)
+  exit           process exit code, default 0
+  occurrences    [1,3] -> only the 1st and 3rd time this command is seen
+
+
+===============================================================================
+ NOTES
+===============================================================================
+* Expected result today: 12 of 13 commands pass. The one failure is the
+  netconfprov attempt as user root, which the real node also refuses
+  (see 40528\LOGS\KKP16_execution.log); the workflow then retries as netconfcli.
+* C:\clicr-sim is a space-free staging area. It is needed because a `node: local`
+  command carrying a quoted path with spaces does not survive Java -> bash -lc.
+* The xmllint shim is installed to ~/bin because local steps run under a LOGIN
+  shell, which rebuilds PATH.
+* Only SBC-1 is wired: SBC-2 in the CIQ still holds the <CapacityLicenseText>
+  placeholder instead of a real key.

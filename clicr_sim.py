@@ -634,6 +634,9 @@ def main(argv=None):
     ap.add_argument("--host", default="0.0.0.0", help="bind address (default 0.0.0.0)")
     ap.add_argument("--port", type=int, default=2222, help="listen port (default 2222)")
     ap.add_argument("--scenario", help="scenario YAML/JSON (success/fail injection)")
+    ap.add_argument("--responses",
+                    help="response file: flat 'command => reply' .txt, or a single "
+                         "request/response .yaml (see response_file.py)")
     ap.add_argument("--workflow", help="workflow YAML (auto-derive prompts + drive per-step output)")
     ap.add_argument("--fail", action="append", default=[],
                     help="Fail selector 'PHASE_NAME:step_idx' (repeatable, comma-list allowed)")
@@ -661,6 +664,13 @@ def main(argv=None):
             return 2
         with open(args.scenario, "r", encoding="utf-8") as fh:
             scenario_raw = yaml.safe_load(fh) or {}
+
+    # --responses: flat "command => reply" text, or a single request/response
+    # YAML. Converted to the same rule dicts a scenario uses, and checked first.
+    if args.responses:
+        import response_file
+        scenario_raw = response_file.merge(scenario_raw, response_file.load(args.responses))
+
     scenario = Scenario(scenario_raw)
 
     profiles, user_map = build_profiles(scenario_raw, args.workflow, log)
